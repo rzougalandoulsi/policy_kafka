@@ -1,8 +1,8 @@
-package governance.approval
+package governance.changes.approval
 
-import data.governance.helpers as h
+import data.governance.changes.lib as h
 
-# Approval requirements never deny by themselves; they are ignored when a hard deny applies (see decision.rego).
+# Approval requirements never deny by themselves; they are ignored when a hard deny applies (see core.rego).
 
 # PROD_TOPIC_DELETE_REQUIRES_APPROVAL
 approvals contains h.approval("PROD_TOPIC_DELETE_REQUIRES_APPROVAL", msg, "TOPIC", a.resourceName) if {

@@ -1,5 +1,6 @@
-# OPA pulls the ACTIVE policy bundle from Governance (internal endpoint, static bearer token).
-# OPA has no public exposure: only the governance service talks to it on the compose network.
+# OPA pulls the six ACTIVE policy bundles (one per root governance/<name>) from Governance's internal bundle
+# endpoint with a static bearer token. OPA has no public exposure: only the governance service talks to it on
+# the compose network. In OpenShift the same six bundles come from Artifactory at pinned revisions.
 services:
   governance:
     url: http://governance:8080/internal/opa
@@ -7,11 +8,29 @@ services:
       bearer:
         token: ${OPA_BUNDLE_TOKEN}
 bundles:
-  governance:
+  core:
     service: governance
-    resource: bundles/governance
-    polling:
-      min_delay_seconds: 5
-      max_delay_seconds: 15
+    resource: bundles/core
+    polling: { min_delay_seconds: 5, max_delay_seconds: 15 }
+  manifests:
+    service: governance
+    resource: bundles/manifests
+    polling: { min_delay_seconds: 5, max_delay_seconds: 15 }
+  naming:
+    service: governance
+    resource: bundles/naming
+    polling: { min_delay_seconds: 5, max_delay_seconds: 15 }
+  quotas:
+    service: governance
+    resource: bundles/quotas
+    polling: { min_delay_seconds: 5, max_delay_seconds: 15 }
+  resources:
+    service: governance
+    resource: bundles/resources
+    polling: { min_delay_seconds: 5, max_delay_seconds: 15 }
+  changes:
+    service: governance
+    resource: bundles/changes
+    polling: { min_delay_seconds: 5, max_delay_seconds: 15 }
 decision_logs:
   console: true

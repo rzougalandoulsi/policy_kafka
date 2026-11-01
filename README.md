@@ -34,7 +34,7 @@ Exactly two topics carry the Governance↔Orchestrator protocol: `requests.manif
 ```bash
 mvn -q verify                 # unit tests + Testcontainers end-to-end test (Docker required)
 policies/test.sh              # Rego unit tests (OPA in Docker)
-policies/build.sh [revision]  # check + test + build policies/dist/governance-bundle.tar.gz
+policies/build.sh [revision]  # check + test + build the six bundles into policies/dist/ plus release.json
 cd admin-ui && pnpm install && pnpm lint && pnpm test && pnpm build   # admin console (Node 20+, pnpm)
 ```
 
@@ -44,7 +44,7 @@ cd admin-ui && pnpm install && pnpm lint && pnpm test && pnpm build   # admin co
 mvn -q package -DskipTests && policies/build.sh
 cp deploy/.env.example deploy/.env
 docker compose -f deploy/docker-compose.yml up --build -d
-deploy/scripts/upload-bundle.sh                       # upload + activate the policy bundle, wait for OPA
+deploy/scripts/upload-release.sh                      # upload the six bundles, activate them as one release, wait for OPA
 deploy/scripts/submit-manifest.sh docs/examples/manifest.json
 ```
 

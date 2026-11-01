@@ -8,6 +8,7 @@ import com.itland.governance.domain.decision.DecisionType;
 import com.itland.governance.domain.decision.GovernanceDecision;
 import com.itland.governance.domain.decision.GovernanceStage;
 import com.itland.governance.domain.exception.PolicyException;
+import com.itland.governance.domain.policy.PolicyRelease;
 import com.itland.governance.domain.policy.PolicySnapshot;
 import com.itland.governance.domain.request.ManifestRequest;
 import com.itland.governance.domain.request.ProposedPlan;
@@ -71,8 +72,10 @@ public class PolicyEvaluationService {
           return new Prepared(snapshot, excs);
         })
         .flatMap(prepared -> {
-          if (opaProperties.verifyRevision() && prepared.snapshot().bundleRevision() == null) {
-            return Mono.just(error(stage, request, planId, digest, prepared.snapshot(), started, "No ACTIVE policy bundle; refusing to evaluate"));
+          PolicyRelease release = prepared.snapshot().release();
+          if (opaProperties.verifyRevision() && (release == null || !release.complete(opaProperties.bundles()))) {
+            Set<String> missing = release == null ? new java.util.TreeSet<>(opaProperties.bundles()) : release.missing(opaProperties.bundles());
+            return Mono.just(error(stage, request, planId, digest, prepared.snapshot(), started, "No complete ACTIVE policy release; missing bundles " + missing));
           }
           Map<String, Object> input = OpaInputAssembler.build(stage, request.principalId(), principalRoles, request.manifest(),
               request.id(), request.manifestDigest(), plan, prepared.snapshot(), prepared.exceptions());
@@ -97,10 +100,20 @@ public class PolicyEvaluationService {
   private GovernanceDecision toDecision(GovernanceStage stage, ManifestRequest request, String planId, String digest, PolicySnapshot snapshot,
                                         OpaEvaluation evaluation, Set<String> knownExceptions, Instant started) {
     long latency = Duration.between(started, clock.instant()).toMillis();
-    String opaRevision = evaluation.bundleRevision(opaProperties.bundleName());
-    if (opaProperties.verifyRevision() && !snapshot.bundleRevision().equals(opaRevision)) {
+    PolicyRelease release = snapshot.release();
+    if (!Boolean.TRUE.equals(evaluation.result().ready())) {
       return error(stage, request, planId, digest, snapshot, started,
-          "Policy revision mismatch: active=" + snapshot.bundleRevision() + " opa=" + opaRevision);
+          "Policy set not ready: OPA composition reports bundles " + evaluation.result().bundles());
+    }
+    if (opaProperties.verifyRevision()) {
+      for (String name : opaProperties.bundles()) {
+        String expected = release.revisions().get(name);
+        String opaRevision = evaluation.bundleRevision(name);
+        if (!expected.equals(opaRevision)) {
+          return error(stage, request, planId, digest, snapshot, started,
+              "Policy revision mismatch for bundle " + name + ": active=" + expected + " opa=" + opaRevision);
+        }
+      }
     }
     DecisionAggregator.Aggregate agg = DecisionAggregator.aggregate(evaluation.result(), knownExceptions);
     if (!agg.consistentWithOpa()) {
@@ -108,14 +121,15 @@ public class PolicyEvaluationService {
           "OPA decision '" + evaluation.result().decision() + "' is inconsistent with aggregated violations (" + agg.type() + ")");
     }
     return new GovernanceDecision("dec-" + UUID.randomUUID(), request.id(), planId, stage, agg.type(),
-        snapshot.bundleRevision() == null ? "" : snapshot.bundleRevision(), snapshot.configurationVersion(), digest,
+        release == null ? "" : release.id(), release == null ? Map.of() : release.revisions(), snapshot.configurationVersion(), digest,
         agg.matchedPolicies(), agg.violations(), agg.approvals(), agg.appliedExceptions(), null, latency, clock.instant());
   }
 
   private GovernanceDecision error(GovernanceStage stage, ManifestRequest request, String planId, String digest, PolicySnapshot snapshot,
                                    Instant started, String message) {
+    PolicyRelease release = snapshot == null ? null : snapshot.release();
     return new GovernanceDecision("dec-" + UUID.randomUUID(), request.id(), planId, stage, DecisionType.ERROR,
-        snapshot == null || snapshot.bundleRevision() == null ? "" : snapshot.bundleRevision(),
+        release == null ? "" : release.id(), release == null ? Map.of() : release.revisions(),
         snapshot == null ? 0 : snapshot.configurationVersion(), digest, List.of(), List.of(), List.of(), List.of(), message,
         Duration.between(started, clock.instant()).toMillis(), clock.instant());
   }

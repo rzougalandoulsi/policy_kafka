@@ -12,8 +12,8 @@
     - request states and transitions ........ governance/src/main/java/com/itland/governance/domain/request/RequestStatus.java, RequestLifecycle.java
     - command and event names ............... contracts/src/main/avro/GovernanceTypes.avsc
     - topics, digests, delivery semantics ... docs/kafka-contract.md
-    - decision precedence ................... policies/governance/decision.rego (HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW)
-    - policy ids, severity, bypassable ...... policies/governance/catalog.rego
+    - decision precedence ................... policies/bundles/core/core.rego (HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW)
+    - policy ids, severity, bypassable ...... catalog lists in policies/bundles/*/
     - REST endpoints and status codes ....... docs/governance.md
     - services and ports (component map) .... deploy/docker-compose.yml
     - tables (component map) ................ governance/src/main/resources/db/migration/
@@ -238,9 +238,9 @@
     <ul>
       <li>Exactly two topics carry the Governance ↔ Orchestrator protocol: <code>requests.manifest</code> (commands <code>SUBMIT_MANIFEST</code>, <code>AUTHORIZE_PLAN</code>, <code>REJECT_PLAN</code>) and <code>response.manifest</code> (events <code>PLAN_PROPOSED</code>, <code>MANIFEST_COMPLETED</code>, <code>MANIFEST_FAILED</code>, <code>MANIFEST_REJECTED</code>).</li>
       <li>Every status transition is checked by <code>RequestLifecycle</code> and appended to <code>request_status_history</code>; commands leave through a transactional outbox, events arrive through an inbox keyed by <code>eventId</code>.</li>
-      <li>Decision precedence is <code>HARD_DENY &gt; DENY &gt; REQUIRE_APPROVAL &gt; ALLOW</code>. Only bypassable violations honour exceptions, and only exceptions Governance itself resolved. Approval requirements are never bypassable.</li>
+      <li>Six bundles (<code>core</code>, <code>manifests</code>, <code>naming</code>, <code>quotas</code>, <code>resources</code>, <code>changes</code>) are composed by <code>core</code> into one decision. Decision precedence is <code>HARD_DENY &gt; DENY &gt; REQUIRE_APPROVAL &gt; ALLOW</code>. Only bypassable violations honour exceptions, and only exceptions Governance itself resolved. Approval requirements are never bypassable.</li>
       <li>The Orchestrator releases Actions only after verifying <code>decisionId + planId + planDigest + stateVersion</code>. A plan computed against an older <code>stateVersion</code> ends as <code>STALE_PLAN</code>.</li>
-      <li>OPA unreachable, bundle revision mismatch or a Java/Rego disagreement all yield <code>ERROR</code>: nothing is published and the API answers 503.</li>
+      <li>OPA unreachable, a bundle revision that differs from the active release, a missing bundle or a Java/Rego disagreement all yield <code>ERROR</code>: nothing is published and the API answers 503.</li>
     </ul>
     <p>Sources: <code>docs/governance.md</code>, <code>docs/kafka-contract.md</code>, <code>docs/admin-ui.md</code>, <code>deploy/docker-compose.yml</code>, the Flyway migrations, <code>RequestLifecycle.java</code>, <code>GovernanceTypes.avsc</code>, <code>decision.rego</code>, <code>catalog.rego</code>. Keep this page in step with them.</p>
   </section>
@@ -282,7 +282,7 @@
     fields: { requestId: ID.requestId, manifestDigest: ID.manifestDigest, 'Idempotency-Key': 'ci-run-5521', ...fields },
   });
   const stage1 = (extra = {}) => opa('governance', 'opa', 'stage REQUEST', {
-    detail: 'POST /v1/data/governance/decision?provenance=true with input {stage, principal, team, environment, manifest, configuration, exceptions}. Timeouts and bounded retries apply.',
+    detail: 'POST /v1/data/governance/core/decision?provenance=true with input {stage, principal, team, environment, manifest, configuration, exceptions}. Timeouts and bounded retries apply.',
     fields: { stage: 'REQUEST', configurationVersion: ID.configurationVersion }, ...extra,
   });
   const allow1 = (extra = {}) => opa('opa', 'governance', 'ALLOW', {
@@ -675,10 +675,10 @@
       items: ['requests: manifest_request, request_status_history, governance_decision, proposed_plan, repository_state (latest confirmed stateVersion)', 'approvals: approval_request, approval_decision, approval_configuration', 'policy: policy_configuration, policy_bundle_version (bundle bytes + test report), policy_exception', 'messaging: kafka_outbox, kafka_inbox, kafka_dead_letter', 'audit: audit_record'],
       code: 'governance/src/main/resources/db/migration/' },
     opa: { x: 726, y: 46, w: 150, h: 120, title: 'opa', sub: 'Open Policy Agent', kind: 'Policy engine',
-      lines: ['data.governance.decision', 'data.governance.catalog', 'polls the bundle from governance'],
-      desc: 'Runs the Rego v1 bundle built from policies/governance. Governance calls the decision document with the full input (stage, principal, manifest or plan, configuration, exceptions) and checks that the bundle revision OPA reports equals the ACTIVE one.',
+      lines: ['data.governance.core.decision', 'six bundles: core · manifests · naming', 'quotas · resources · changes'],
+      desc: 'Runs six Rego v1 bundles built from policies/bundles, one per root governance/<name>. Core composes the others into one decision. Governance calls the decision document with the full input and checks that the revision OPA reports for every bundle equals the ACTIVE release.',
       items: ['Decision precedence HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW', 'catalog.rego publishes every policy id with severity and bypassable flag for the admin console', 'A bundle OPA does not adopt within 90 s is marked FAILED and the previous one restored'],
-      code: 'policies/governance/decision.rego' },
+      code: 'policies/bundles/core/core.rego' },
     't-requests': { topic: true, x: 734, y: 216, w: 134, h: 52, title: 'requests.manifest', sub: 'commands · key teamId', kind: 'Kafka topic',
       desc: 'Governance → Orchestrator. ManifestCommand (Avro): SUBMIT_MANIFEST, AUTHORIZE_PLAN, REJECT_PLAN. Published by the outbox relay with an idempotent producer.',
       items: ['Carries requestId, teamId, repositoryId, environment and, after stage 2, planId, planDigest, decisionId', 'Same partition count as teams.repo.manifest so the Orchestrator can co-locate state'],
@@ -720,7 +720,7 @@
     { id: 'l-ui-api', from: 'adminui', to: 'governance', kind: 'http', label: '/api/* + bearer JWT', pts: [[376, 345], [396, 345], [396, 320], [416, 320]], desc: 'nginx forwards /api/* unchanged to Governance; the browser’s access token travels as Authorization: Bearer.' },
     { id: 'l-ui-oidc', from: 'adminui', to: 'oidc', kind: 'oidc', label: '/oidc/* proxy', pts: [[296, 320], [296, 110]], desc: 'Authorization code + PKCE from the browser, proxied with Host: mock-oidc. The proxy pins the Host header so the issuer in the minted token is exactly the one Governance validates.' },
     { id: 'l-jwks', from: 'governance', to: 'oidc', kind: 'oidc', label: 'JWKS', pts: [[416, 78], [376, 78]], desc: 'Governance fetches the signing keys from the issuer to validate every JWT.' },
-    { id: 'l-decision', from: 'governance', to: 'opa', kind: 'opa', label: 'decision', pts: [[686, 96], [726, 96]], desc: 'POST /v1/data/governance/decision?provenance=true, one call per stage. Timeouts, bounded retries, revision check.' },
+    { id: 'l-decision', from: 'governance', to: 'opa', kind: 'opa', label: 'decision', pts: [[686, 96], [726, 96]], desc: 'POST /v1/data/governance/core/decision?provenance=true, one call per stage. Timeouts, bounded retries, release check across all six bundles.' },
     { id: 'l-bundle', from: 'opa', to: 'governance', kind: 'bundle', label: 'bundle poll', pts: [[726, 136], [686, 136]], desc: 'GET /internal/opa/bundles/governance: OPA polls the ACTIVE bundle with a static bearer token; ETag / 304 when unchanged.' },
     { id: 'l-jdbc', from: 'governance', to: 'postgres', kind: 'jdbc', label: 'JDBC', pts: [[551, 330], [551, 370]], both: true, desc: 'All persistence. One transaction per transition: status, history, decision, outbox row.' },
     { id: 'l-produce-cmd', from: 'governance', to: 't-requests', kind: 'cmd', label: 'outbox', pts: [[686, 242], [734, 242]], desc: 'The outbox relay publishes claimed rows with an idempotent producer, keyed by teamId.' },

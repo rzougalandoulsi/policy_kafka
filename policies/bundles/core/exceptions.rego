@@ -1,4 +1,4 @@
-package governance.exceptions
+package governance.core.exceptions
 
 # Scoped exceptions are resolved by Governance (principal/team/environment already filtered) and passed in input.
 # A violation is exempted when it is bypassable and at least one exception matches its policy, resource and action.

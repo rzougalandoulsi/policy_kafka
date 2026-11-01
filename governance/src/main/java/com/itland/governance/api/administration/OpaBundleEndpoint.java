@@ -32,15 +32,15 @@ public class OpaBundleEndpoint {
 
   @GetMapping("/internal/opa/bundles/{name}")
   public Mono<ResponseEntity<byte[]>> bundle(@PathVariable String name, @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-    if (!service.bundleName().equals(name)) {
+    if (!service.bundles().contains(name)) {
       return Mono.just(ResponseEntity.notFound().build());
     }
-    return blocking.call(service::serveActive).map(opt -> opt.map(served -> {
+    return blocking.call(() -> service.serveActive(name)).map(opt -> opt.map(served -> {
       String etag = "\"" + served.sha256() + "\"";
       if (etag.equals(ifNoneMatch)) {
         return ResponseEntity.status(HttpStatus.NOT_MODIFIED).eTag(etag).<byte[]>build();
       }
-      log.info("Serving policy bundle revision {} to OPA", served.revision());
+      log.info("Serving policy bundle {} revision {} to OPA", name, served.revision());
       return ResponseEntity.ok().eTag(etag).header("X-Bundle-Revision", served.revision())
           .contentType(MediaType.APPLICATION_OCTET_STREAM).body(served.bytes());
     }).orElseGet(() -> ResponseEntity.notFound().build()));

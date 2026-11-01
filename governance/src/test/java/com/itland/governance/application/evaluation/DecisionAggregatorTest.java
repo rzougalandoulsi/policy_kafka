@@ -16,7 +16,7 @@ class DecisionAggregatorTest {
   }
 
   private static OpaEvaluation.Result result(String decision, List<OpaEvaluation.Violation> violations, List<OpaEvaluation.Approval> approvals) {
-    return new OpaEvaluation.Result(decision, violations, approvals, List.of(), List.of(), "r1");
+    return new OpaEvaluation.Result(decision, violations, approvals, List.of(), List.of(), true, java.util.Map.of(), java.util.Map.of("core", "core-r1"));
   }
 
   @Test

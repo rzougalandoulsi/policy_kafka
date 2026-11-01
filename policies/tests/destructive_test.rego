@@ -1,6 +1,6 @@
-package governance.destructive_test
+package governance.changes.destructive_test
 
-import data.governance.destructive
+import data.governance.changes.destructive
 import data.governance.fixtures as f
 
 ids(vs) := {v.policyId | some v in vs}

@@ -1,7 +1,7 @@
-package governance.limits_test
+package governance.resources.limits_test
 
 import data.governance.fixtures as f
-import data.governance.limits
+import data.governance.resources.limits
 
 ids(vs) := {v.policyId | some v in vs}
 
@@ -30,10 +30,4 @@ test_retention_limit_from_config_and_infinite if {
 	"TOPIC_RETENTION_LIMIT" in ids(limits.violations) with input as f.request("development", [t], [])
 	ok := object.union(f.topic("team-a.a", 1), {"config": {"retention.ms": "86400000"}})
 	not "TOPIC_RETENTION_LIMIT" in ids(limits.violations) with input as f.request("development", [ok], [])
-}
-
-test_plan_partition_budget if {
-	actions := [f.action("TOPIC_CREATE", "TOPIC", "team-a.a", {"partitions": "60"}), f.action("TOPIC_CREATE", "TOPIC", "team-a.b", {"partitions": "60"})]
-	"MAX_PARTITIONS_PER_PLAN" in ids(limits.violations) with input as f.plan("development", actions)
-	not "MAX_PARTITIONS_PER_PLAN" in ids(limits.violations) with input as f.plan("development", [actions[0]])
 }

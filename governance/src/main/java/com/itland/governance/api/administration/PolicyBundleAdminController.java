@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
@@ -26,7 +27,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/v1/admin/policy-bundles")
-@Tag(name = "Administration: policy bundles", description = "Versioned Rego bundles served to OPA; activation and rollback")
+@Tag(name = "Administration: policy bundles", description = "Versioned Rego bundles (one per root governance/<name>) served to OPA; activation and rollback per bundle")
 public class PolicyBundleAdminController {
 
   public record UploadBody(@NotBlank String bundleBase64, @NotBlank String testReportJson, String comment) {}
@@ -56,14 +57,14 @@ public class PolicyBundleAdminController {
   }
 
   @GetMapping("/diagnostics")
-  @Operation(summary = "Active revision versus the revision OPA reports")
+  @Operation(summary = "Expected release versus the revisions OPA reports, per bundle")
   public Mono<PolicyBundleService.RevisionDiagnostics> diagnostics(Authentication auth) {
     authorization.requireAuditor(callers.of(auth));
     return blocking.call(service::diagnostics);
   }
 
   @PostMapping
-  @Operation(summary = "Upload a built bundle (tar.gz, base64) with its opa test JSON report")
+  @Operation(summary = "Upload one built bundle (tar.gz, base64; root governance/<name>) with the opa test JSON report")
   public Mono<PolicyBundleVersion> upload(Authentication auth, @RequestBody UploadBody body) {
     var c = callers.of(auth);
     authorization.requireAdmin(c);
@@ -79,9 +80,10 @@ public class PolicyBundleAdminController {
   }
 
   @PostMapping("/rollback")
-  public Mono<PolicyBundleVersion> rollback(Authentication auth) {
+  @Operation(summary = "Restore the most recently retired version of one bundle")
+  public Mono<PolicyBundleVersion> rollback(Authentication auth, @RequestParam("bundle") String bundle) {
     var c = callers.of(auth);
     authorization.requireAdmin(c);
-    return blocking.inTransaction(() -> service.rollback(c.principalId()));
+    return blocking.inTransaction(() -> service.rollback(bundle, c.principalId()));
   }
 }

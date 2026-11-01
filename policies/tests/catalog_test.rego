@@ -1,33 +1,41 @@
-package governance.catalog_test
+package governance.core.catalog_test
 
-import data.governance.catalog
+import data.governance.core
 import data.governance.fixtures as f
 
+bundles := {"core", "manifests", "naming", "quotas", "resources", "changes"}
+
 test_policy_ids_are_unique if {
-	count(catalog.ids) == count(catalog.policies)
+	count(core.catalog_ids) == count(core.policy_catalog)
+}
+
+test_every_entry_names_its_bundle if {
+	every p in core.policy_catalog {
+		p.bundle in bundles
+	}
 }
 
 test_hard_deny_is_never_bypassable if {
-	count({p | some p in catalog.policies; p.severity == "HARD_DENY"; p.bypassable == true}) == 0
+	count({p | some p in core.policy_catalog; p.severity == "HARD_DENY"; p.bypassable == true}) == 0
 }
 
 test_approvals_are_never_bypassable if {
-	count({p | some p in catalog.policies; p.kind == "APPROVAL"; p.bypassable == true}) == 0
+	count({p | some p in core.policy_catalog; p.kind == "APPROVAL"; p.bypassable == true}) == 0
 }
 
 test_every_section_is_a_configuration_section if {
-	every p in catalog.policies {
+	every p in core.policy_catalog {
 		p.section in {"naming", "rbac", "limits", "destructive", "approvals"}
 	}
 }
 
-# Every violation and approval the rules actually emit against a worst-case input must be catalogued,
+# Every violation and approval the composed decision emits against a worst-case input must be catalogued,
 # with the same severity and bypassable flag.
 test_emitted_violations_are_catalogued if {
-	emitted := data.governance.naming.violations | data.governance.rbac.violations | data.governance.limits.violations with input as worst_request
-	count(emitted) > 0
-	every v in emitted {
-		some p in catalog.policies
+	d := core.decision with input as worst_request
+	count(d.violations) > 0
+	every v in d.violations {
+		some p in core.policy_catalog
 		p.policyId == v.policyId
 		p.severity == v.severity
 		p.bypassable == v.bypassable
@@ -35,18 +43,18 @@ test_emitted_violations_are_catalogued if {
 }
 
 test_emitted_plan_violations_and_approvals_are_catalogued if {
-	emitted := data.governance.limits.violations | data.governance.destructive.violations | data.governance.rbac.violations with input as worst_plan
-	count(emitted) > 0
-	every v in emitted {
-		some p in catalog.policies
+	d := core.decision with input as worst_plan
+	count(d.violations) > 0
+	every v in d.violations {
+		some p in core.policy_catalog
 		p.policyId == v.policyId
 		p.severity == v.severity
 		p.bypassable == v.bypassable
 	}
-	approvals := data.governance.approval.approvals with input as worst_plan
-	count(approvals) > 0
-	every a in approvals {
-		some p in catalog.policies
+	raw := data.governance.changes.approvals with input as worst_plan
+	count(raw) > 0
+	every a in raw {
+		some p in core.policy_catalog
 		p.policyId == a.policyId
 		p.kind == "APPROVAL"
 	}

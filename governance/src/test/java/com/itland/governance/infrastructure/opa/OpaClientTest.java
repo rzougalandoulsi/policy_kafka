@@ -7,6 +7,7 @@ import reactor.test.StepVerifier;
 
 import java.net.ServerSocket;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,7 +19,8 @@ class OpaClientTest {
     int port;
     try (ServerSocket s = new ServerSocket(0)) { port = s.getLocalPort(); }
     GovernanceProperties props = new GovernanceProperties(null,
-        new GovernanceProperties.Opa("http://127.0.0.1:" + port, "/v1/data/governance/decision", "governance",
+        new GovernanceProperties.Opa("http://127.0.0.1:" + port, "/v1/data/governance/core/decision", "/v1/data/governance/core/policy_catalog", "/v1/data/governance/core/ready",
+            List.of("core", "manifests", "naming", "quotas", "resources", "changes"),
             Duration.ofMillis(300), Duration.ofMillis(500), 1, Duration.ofMillis(10), true, "t"), null, null, null, null);
     OpaClient client = new OpaClient(WebClient.builder(), props);
     StepVerifier.create(client.evaluate(Map.of("stage", "REQUEST")))

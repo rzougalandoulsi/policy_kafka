@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import java.util.Map;
 
-/** Raw OPA Data API response for data.governance.decision (with ?provenance=true). */
+/** Raw OPA Data API response for data.governance.core.decision (with ?provenance=true). */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record OpaEvaluation(Result result, Provenance provenance) {
 
@@ -16,12 +16,19 @@ public record OpaEvaluation(Result result, Provenance provenance) {
       List<Approval> approvals,
       List<String> matchedPolicies,
       List<String> appliedExceptions,
-      String revision) {
+      /** false when a required bundle is missing or has an incompatible contract version (composition not ready). */
+      Boolean ready,
+      /** contract version per loaded domain bundle. */
+      Map<String, String> bundles,
+      /** revision per bundle as OPA sees it (data.system.bundles). */
+      Map<String, String> revisions) {
     public Result {
       violations = violations == null ? List.of() : violations;
       approvals = approvals == null ? List.of() : approvals;
       matchedPolicies = matchedPolicies == null ? List.of() : matchedPolicies;
       appliedExceptions = appliedExceptions == null ? List.of() : appliedExceptions;
+      bundles = bundles == null ? Map.of() : bundles;
+      revisions = revisions == null ? Map.of() : revisions;
     }
   }
 

@@ -1,6 +1,7 @@
-package governance.helpers
+package governance.core.lib
 
-# Shared helpers for all governance policies (Rego v1).
+# Shared helpers (Rego v1). Every bundle carries an identical copy under its own root because a bundle must
+# compile on its own (cross-bundle function calls do not compile). scripts/check-lib-sync.sh keeps the copies equal.
 
 stage_request if input.stage == "REQUEST"
 

@@ -3,6 +3,7 @@ package com.itland.governance.application.policy;
 import com.itland.governance.application.audit.AuditService;
 import com.itland.governance.domain.policy.PolicyBundleVersion;
 import com.itland.governance.domain.policy.PolicyConfiguration;
+import com.itland.governance.domain.policy.PolicyRelease;
 import com.itland.governance.domain.policy.PolicySnapshot;
 import com.itland.governance.domain.policy.VersionStatus;
 import com.itland.governance.infrastructure.persistence.PolicyBundleRepository;
@@ -38,12 +39,13 @@ public class PolicyConfigurationService {
     this.clock = clock;
   }
 
-  /** The consistent (configuration version, bundle revision) pair for one decision. Bundle revision is null when none is active. */
+  /** The consistent (configuration version, policy release) pair for one decision. Release is null when no bundle is active. */
   public PolicySnapshot activeSnapshot() {
     PolicyConfiguration config = configurations.findActive()
         .orElseThrow(() -> new IllegalStateException("No ACTIVE policy configuration"));
-    String revision = bundles.findActive().map(PolicyBundleVersion::revision).orElse(null);
-    return new PolicySnapshot(config.version(), config.content(), revision);
+    Map<String, String> revisions = new java.util.TreeMap<>();
+    for (PolicyBundleVersion v : bundles.findActiveAll()) revisions.put(v.bundleName(), v.revision());
+    return new PolicySnapshot(config.version(), config.content(), revisions.isEmpty() ? null : PolicyRelease.of(revisions));
   }
 
   public List<PolicyConfiguration> list() {

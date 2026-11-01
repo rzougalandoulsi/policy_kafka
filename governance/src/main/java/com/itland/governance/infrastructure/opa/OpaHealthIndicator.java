@@ -17,8 +17,8 @@ public class OpaHealthIndicator implements ReactiveHealthIndicator {
   @Override
   public Mono<Health> health() {
     return client.healthy().flatMap(ok -> ok
-        ? client.loadedRevision().map(rev -> Health.up().withDetail("bundleRevision", rev).build())
-            .onErrorResume(e -> Mono.just(Health.up().withDetail("bundleRevision", "unknown").build()))
+        ? client.loadedRevisions().map(revs -> Health.up().withDetail("bundleRevisions", revs).build())
+            .onErrorResume(e -> Mono.just(Health.up().withDetail("bundleRevisions", "unknown").build()))
         : Mono.just(Health.down().withDetail("reason", "OPA health endpoint not OK").build()));
   }
 }

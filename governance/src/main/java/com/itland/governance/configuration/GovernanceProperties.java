@@ -30,8 +30,11 @@ public record GovernanceProperties(
 
   public record Opa(
       String url,
-      @DefaultValue("/v1/data/governance/decision") String decisionPath,
-      @DefaultValue("governance") String bundleName,
+      @DefaultValue("/v1/data/governance/core/decision") String decisionPath,
+      @DefaultValue("/v1/data/governance/core/policy_catalog") String catalogPath,
+      @DefaultValue("/v1/data/governance/core/ready") String readyPath,
+      /** Bundle names of the policy release OPA must run; every decision verifies all of their revisions. */
+      @DefaultValue({"core", "manifests", "naming", "quotas", "resources", "changes"}) List<String> bundles,
       @DefaultValue("2s") Duration connectTimeout,
       @DefaultValue("5s") Duration responseTimeout,
       @DefaultValue("2") int maxRetries,

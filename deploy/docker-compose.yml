@@ -1,7 +1,7 @@
 # Local platform: Kafka (KRaft, SASL/PLAIN + ACLs), Schema Registry, Postgres, OPA, mock OIDC,
 # Governance and the Orchestrator / Processor stand-ins.
 #   mvn -q package -DskipTests && policies/build.sh && docker compose -f deploy/docker-compose.yml up --build -d
-#   deploy/scripts/upload-bundle.sh && deploy/scripts/submit-manifest.sh docs/examples/manifest.json
+#   deploy/scripts/upload-release.sh && deploy/scripts/submit-manifest.sh docs/examples/manifest.json
 name: policy-kafka
 
 x-jaas: &jaas-governance 'org.apache.kafka.common.security.plain.PlainLoginModule required username="governance" password="${KAFKA_GOVERNANCE_PASSWORD}";'

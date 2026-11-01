@@ -34,8 +34,13 @@ public final class PlatformContainers {
   public static final int GOVERNANCE_PORT = 18080;
   public static final String BUNDLE_TOKEN = "test-bundle-token";
   public static final Path POLICIES_DIR = Path.of("..", "policies").toAbsolutePath().normalize();
-  public static final Path BUNDLE = POLICIES_DIR.resolve("dist/governance-bundle.tar.gz");
+  public static final List<String> BUNDLES = List.of("core", "manifests", "naming", "quotas", "resources", "changes");
+  public static final Path RELEASE = POLICIES_DIR.resolve("dist/release.json");
   public static final Path TEST_REPORT = POLICIES_DIR.resolve("dist/test-report.json");
+
+  public static Path bundle(String name) {
+    return POLICIES_DIR.resolve("dist/" + name + "-bundle.tar.gz");
+  }
 
   public static final Network NETWORK = Network.newNetwork();
 
@@ -61,15 +66,12 @@ public final class PlatformContainers {
             bearer:
               token: %s
       bundles:
-        governance:
-          service: governance
-          resource: bundles/governance
-          polling:
-            min_delay_seconds: 1
-            max_delay_seconds: 2
+      %s
       decision_logs:
         console: false
-      """.formatted(GOVERNANCE_PORT, BUNDLE_TOKEN);
+      """.formatted(GOVERNANCE_PORT, BUNDLE_TOKEN, String.join("\n", List.of("core", "manifests", "naming", "quotas", "resources", "changes").stream()
+          .map(n -> "  " + n + ":\n          service: governance\n          resource: bundles/" + n + "\n          polling:\n            min_delay_seconds: 1\n            max_delay_seconds: 2")
+          .toList()));
 
   public static final GenericContainer<?> OPA = new GenericContainer<>("openpolicyagent/opa:1.22.0")
       .withExposedPorts(8181)
@@ -116,8 +118,8 @@ public final class PlatformContainers {
   }
 
   private static void ensureBundle() {
-    if (Files.exists(BUNDLE) && Files.exists(TEST_REPORT) && !bundleIsStale()) return;
-    log.info("Building the OPA bundle with policies/build.sh");
+    if (Files.exists(RELEASE) && Files.exists(TEST_REPORT) && BUNDLES.stream().allMatch(n -> Files.exists(bundle(n))) && !bundleIsStale()) return;
+    log.info("Building the OPA bundles with policies/build.sh");
     try {
       Process p = new ProcessBuilder(POLICIES_DIR.resolve("build.sh").toString(), "it-local").inheritIO().start();
       if (p.waitFor() != 0) throw new IllegalStateException("policies/build.sh failed");
@@ -126,10 +128,11 @@ public final class PlatformContainers {
     }
   }
 
-  /** A bundle older than any policy source would make the tests exercise stale Rego. */
+  /** A release older than any policy source would make the tests exercise stale Rego. */
   private static boolean bundleIsStale() {
-    try (var sources = Files.list(POLICIES_DIR.resolve("governance"))) {
-      var built = Files.getLastModifiedTime(BUNDLE);
+    try (var bundles = Files.walk(POLICIES_DIR.resolve("bundles")); var tests = Files.walk(POLICIES_DIR.resolve("tests"))) {
+      var built = Files.getLastModifiedTime(RELEASE);
+      var sources = java.util.stream.Stream.concat(bundles, tests).filter(Files::isRegularFile);
       return sources.anyMatch(f -> {
         try {
           return Files.getLastModifiedTime(f).compareTo(built) > 0;

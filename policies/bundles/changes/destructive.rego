@@ -1,6 +1,6 @@
-package governance.destructive
+package governance.changes.destructive
 
-import data.governance.helpers as h
+import data.governance.changes.lib as h
 
 # Action-plan stage only: destructive operations must be enabled for the environment (bypassable).
 

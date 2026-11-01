@@ -1,6 +1,6 @@
 package governance.naming
 
-import data.governance.helpers as h
+import data.governance.naming.lib as h
 
 # TOPIC_NAME_PATTERN: every topic name must match the configured pattern (bypassable).
 violations contains h.violation("TOPIC_NAME_PATTERN", "DENY", msg, "TOPIC", t.name, true) if {
@@ -27,3 +27,15 @@ violations contains h.violation("ENV_NAME_RESTRICTION", "DENY", msg, "TOPIC", t.
 	regex.match(pattern, t.name)
 	msg := sprintf("topic '%s' is not allowed in environment '%s' (matches %s)", [t.name, h.env, pattern])
 }
+
+# ---- bundle contract
+
+contract_version := "1.0"
+
+approvals := set()
+
+catalog := [
+	{"policyId": "TOPIC_NAME_PATTERN", "bundle": "naming", "kind": "VIOLATION", "section": "naming", "severity": "DENY", "bypassable": true, "stages": ["REQUEST"], "resourceType": "TOPIC", "description": "Topic names must match configuration naming.topicPattern."},
+	{"policyId": "TEAM_PREFIX_REQUIRED", "bundle": "naming", "kind": "VIOLATION", "section": "naming", "severity": "DENY", "bypassable": true, "stages": ["REQUEST"], "resourceType": "TOPIC", "description": "Topics must start with the owning team prefix when naming.requireTeamPrefix is true."},
+	{"policyId": "ENV_NAME_RESTRICTION", "bundle": "naming", "kind": "VIOLATION", "section": "naming", "severity": "DENY", "bypassable": true, "stages": ["REQUEST"], "resourceType": "TOPIC", "description": "Topic names must not match naming.environmentRestrictions[env].forbiddenPatterns."},
+]

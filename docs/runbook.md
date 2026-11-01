@@ -31,7 +31,7 @@
 | Bundle `FAILED` | OPA could not load it; previous version restored automatically | fix the bundle, upload a new revision |
 
 ## Policy rollout
-`policies/build.sh <revision>` → `POST /api/v1/admin/policy-bundles` (bundle + test report) → `POST .../activate` → watch `diagnostics.match` → `POST /api/v1/admin/policy-bundles/rollback` if needed. Configuration changes: create a draft, activate, rollback.
+`policies/build.sh <revision>` builds six bundles and `dist/release.json` → upload each (`POST /api/v1/admin/policy-bundles`, bundle + shared test report) → `POST /api/v1/admin/policy-releases {versionIds}` activates the set atomically (`deploy/scripts/upload-release.sh` does all of it) → watch `GET /api/v1/admin/policy-releases/current` until `match` and `ready` → `POST /api/v1/admin/policy-bundles/rollback?bundle=<name>` restores one bundle if needed. Readiness (`/actuator/health/readiness`, component `policyRelease`) is DOWN while OPA runs anything but the active release, so a replica with a stale bundle receives no traffic. Configuration changes: create a draft, activate, rollback.
 The same steps are available in the admin console (`/policy-bundles` upload + activate with a live adoption watcher, `/policy-configurations` with a diff before activation). See `docs/admin-ui.md`.
 
 ## Admin console
@@ -40,7 +40,8 @@ The same steps are available in the admin console (`/policy-bundles` upload + ac
 | Sign-in fails / loops | `OIDC_ISSUER` differs from the `iss` the provider mints, or the `/oidc/` proxy does not force the issuer Host | `docs/admin-ui.md` → Troubleshooting |
 | Signed in, every call 401 | Governance validates another issuer than the token | compare `OAUTH2_ISSUER_URI` with the token in the account menu |
 | "No governance role" | token lacks `governance-admin` / `governance-auditor` | identity provider role mapping, `ROLES_CLAIM` |
-| Exception form falls back to free text | catalogue 503: OPA down or no active bundle | diagnostics banner on `/policy-bundles` |
+| Exception form falls back to free text | catalogue 503: OPA down or no active release | diagnostics banner on `/policy-bundles` |
+| Every submission answers 503, readiness DOWN, `policy-releases/current` shows one bundle `match: false` | OPA refused that bundle revision (compile error, wrong root) or has not polled yet | wait one poll interval; then `rollback?bundle=<name>`; `verifyActivation` does it automatically after 90 s |
 
 ## Security notes
 - OPA has no published port; its bundle endpoint on Governance is guarded by `OPA_BUNDLE_TOKEN` and must stay off the public network.

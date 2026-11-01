@@ -16,12 +16,12 @@ import java.util.Map;
 
 /**
  * Read-only catalogue of the policies the ACTIVE bundle can emit. The bundle itself is the source of truth
- * (policies/governance/catalog.rego): Governance only relays data.governance.catalog.policies from OPA so
+ * (policies/bundles/*/ (merged by core.rego into data.governance.core.policy_catalog)): Governance only relays data.governance.catalog.policies from OPA so
  * operators (and the admin UI) can tell which policies are bypassable before scoping an exception.
  */
 @RestController
 @RequestMapping("/api/v1/admin/policies")
-@Tag(name = "Administration: policy catalogue", description = "Policies declared by the active bundle: severity, bypassability, section")
+@Tag(name = "Administration: policy catalogue", description = "Policies declared by the loaded bundles: bundle, severity, bypassability, section")
 public class PolicyCatalogController {
 
   private final OpaClient opa;
@@ -35,8 +35,8 @@ public class PolicyCatalogController {
   }
 
   @GetMapping
-  @Operation(summary = "Policy catalogue of the active bundle",
-      description = "Each entry: policyId, kind (VIOLATION|APPROVAL), section, severity, bypassable, stages, resourceType, description. Empty when no bundle is loaded; 503 when OPA is unreachable.")
+  @Operation(summary = "Policy catalogue of the active release",
+      description = "Each entry: policyId, bundle, kind (VIOLATION|APPROVAL), section, severity, bypassable, stages, resourceType, description. Empty when no bundle is loaded; 503 when OPA is unreachable.")
   public Mono<List<Map<String, Object>>> list(Authentication auth) {
     authorization.requireAuditor(callers.of(auth));
     return opa.catalog();

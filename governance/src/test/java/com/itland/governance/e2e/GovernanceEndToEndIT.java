@@ -86,7 +86,7 @@ class GovernanceEndToEndIT {
 
   @Autowired JdbcClient jdbc;
   WebTestClient client;
-  String bundleV1Id;
+  Map<String, String> bundleV1Ids = new java.util.TreeMap<>();
 
   @BeforeAll
   void setUp() {
@@ -140,14 +140,41 @@ class GovernanceEndToEndIT {
         .expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
   }
 
-  void awaitOpaRevision(String revision) {
+  /** Waits until OPA runs exactly the expected revision for each given bundle and the whole release matches. */
+  @SuppressWarnings("unchecked")
+  void awaitRelease(Map<String, String> expected) {
     try {
-      await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofSeconds(1))
-          .untilAsserted(() -> assertThat(diagnostics()).containsEntry("opaRevision", revision).containsEntry("match", true));
+      await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofSeconds(1)).untilAsserted(() -> {
+        Map<String, Object> d = diagnostics();
+        assertThat(d).containsEntry("match", true).containsEntry("ready", true);
+        Map<String, Map<String, Object>> bundles = (Map<String, Map<String, Object>>) d.get("bundles");
+        expected.forEach((name, rev) -> assertThat(bundles.get(name)).containsEntry("loaded", rev).containsEntry("match", true));
+      });
     } catch (RuntimeException e) {
       System.err.println("==== OPA container logs ====\n" + PlatformContainers.opaLogs());
       throw e;
     }
+  }
+
+  @SuppressWarnings("unchecked")
+  Map<String, String> releaseRevisions() throws Exception {
+    Map<String, Object> release = new tools.jackson.databind.json.JsonMapper().readValue(Files.readString(PlatformContainers.RELEASE), Map.class);
+    Map<String, String> out = new java.util.TreeMap<>();
+    ((Map<String, Map<String, Object>>) release.get("bundles")).forEach((n, b) -> out.put(n, (String) b.get("revision")));
+    return out;
+  }
+
+  /** Uploads every built bundle of dist/release.json; returns bundle name -> version id. */
+  Map<String, String> uploadRelease(String comment) throws Exception {
+    Map<String, String> ids = new java.util.TreeMap<>();
+    for (String name : PlatformContainers.BUNDLES) ids.put(name, uploadBundle(Files.readAllBytes(PlatformContainers.bundle(name)), comment + " " + name));
+    return ids;
+  }
+
+  void activateRelease(Map<String, String> ids) {
+    client.post().uri("/api/v1/admin/policy-releases").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("versionIds", List.copyOf(ids.values()))).exchange().expectStatus().isOk()
+        .expectBody().jsonPath("$.id").value(id -> assertThat((String) id).startsWith("rel-")).jsonPath("$.revisions.core").isNotEmpty();
   }
 
   @SuppressWarnings("unchecked")
@@ -171,16 +198,18 @@ class GovernanceEndToEndIT {
 
   @Test
   @Order(2)
-  void adminUploadsAndActivatesTheBundleAndOpaAdoptsIt() throws Exception {
-    byte[] bundle = Files.readAllBytes(PlatformContainers.BUNDLE);
+  void adminUploadsAndActivatesTheReleaseAndOpaAdoptsAllSixBundles() throws Exception {
     client.post().uri("/api/v1/admin/policy-bundles").header("Authorization", "Bearer " + DEV).contentType(MediaType.APPLICATION_JSON)
         .bodyValue(Map.of("bundleBase64", "AA==", "testReportJson", "[]")).exchange().expectStatus().isForbidden();
 
-    bundleV1Id = uploadBundle(bundle, "v1");
-    client.post().uri("/api/v1/admin/policy-bundles/" + bundleV1Id + "/activate").header("Authorization", "Bearer " + ADMIN).exchange()
-        .expectStatus().isOk().expectBody().jsonPath("$.status").isEqualTo("ACTIVE");
-    String revision = Files.readString(PlatformContainers.POLICIES_DIR.resolve("dist/revision.txt")).trim();
-    awaitOpaRevision(revision);
+    bundleV1Ids.putAll(uploadRelease("v1"));
+    // A partial release is refused: every bundle must be present.
+    client.post().uri("/api/v1/admin/policy-releases").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("versionIds", List.of(bundleV1Ids.get("core")))).exchange().expectStatus().isBadRequest();
+    activateRelease(bundleV1Ids);
+    awaitRelease(releaseRevisions());
+    client.get().uri("/actuator/health/readiness").exchange().expectStatus().isOk()
+        .expectBody().jsonPath("$.components.policyRelease.status").isEqualTo("UP");
   }
 
   @Test
@@ -408,19 +437,25 @@ class GovernanceEndToEndIT {
 
   @Test
   @Order(14)
+  @SuppressWarnings("unchecked")
   void bundleActivationAndRollbackAreVerifiedAgainstOpa() throws Exception {
-    byte[] v2 = Bundles.withRevision(Files.readAllBytes(PlatformContainers.BUNDLE), "it-v2");
-    String v2Id = uploadBundle(v2, "v2");
+    Map<String, String> v1 = releaseRevisions();
+    byte[] v2 = Bundles.withRevision(Files.readAllBytes(PlatformContainers.bundle("naming")), "naming-it-v2", "naming");
+    String v2Id = uploadBundle(v2, "naming v2");
     client.post().uri("/api/v1/admin/policy-bundles/" + v2Id + "/activate").header("Authorization", "Bearer " + ADMIN).exchange().expectStatus().isOk();
-    awaitOpaRevision("it-v2");
+    Map<String, String> expected = new java.util.TreeMap<>(v1);
+    expected.put("naming", "naming-it-v2");
+    awaitRelease(expected);
 
     String requestId = (String) submitAccepted(DEV, manifest("development", List.of(topic("team-a.orders", 6), topic("team-a.payments", 3), topic("team-a.audit", 1)), List.of())).get("requestId");
     awaitStatus(requestId, "COMPLETED");
-    assertThat(decisions(requestId).get(0)).containsEntry("policyRevision", "it-v2");
+    Map<String, Object> decision = decisions(requestId).get(0);
+    assertThat((String) decision.get("policyRevision")).startsWith("rel-");
+    assertThat((Map<String, String>) decision.get("policyRevisions")).containsEntry("naming", "naming-it-v2").containsEntry("core", v1.get("core"));
 
-    client.post().uri("/api/v1/admin/policy-bundles/rollback").header("Authorization", "Bearer " + ADMIN).exchange().expectStatus().isOk()
-        .expectBody().jsonPath("$.id").isEqualTo(bundleV1Id);
-    awaitOpaRevision(Files.readString(PlatformContainers.POLICIES_DIR.resolve("dist/revision.txt")).trim());
+    client.post().uri("/api/v1/admin/policy-bundles/rollback?bundle=naming").header("Authorization", "Bearer " + ADMIN).exchange().expectStatus().isOk()
+        .expectBody().jsonPath("$.id").isEqualTo(bundleV1Ids.get("naming"));
+    awaitRelease(v1);
   }
 
   @Test
@@ -450,6 +485,7 @@ class GovernanceEndToEndIT {
     List<Map<String, Object>> catalogue = client.get().uri("/api/v1/admin/policies").header("Authorization", "Bearer " + AUDITOR).exchange()
         .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
     assertThat(catalogue).hasSize(17);
+    assertThat(catalogue).allSatisfy(p -> assertThat(p.get("bundle")).isIn("core", "manifests", "naming", "quotas", "resources", "changes"));
     Map<String, Object> hardDeny = catalogue.stream().filter(p -> "RBAC_ADMIN_ROLE_FORBIDDEN".equals(p.get("policyId"))).findFirst().orElseThrow();
     assertThat(hardDeny).containsEntry("severity", "HARD_DENY").containsEntry("bypassable", false);
     assertThat(catalogue.stream().filter(p -> Boolean.TRUE.equals(p.get("bypassable"))).count()).isEqualTo(13);
@@ -463,5 +499,27 @@ class GovernanceEndToEndIT {
     assertThat(prometheus).contains("governance_opa_evaluation_seconds").contains("governance_decisions_total")
         .contains("governance_outbox_pending").contains("governance_approvals_pending").contains("governance_policy_revision_match")
         .contains("kafka_consumer_");
+  }
+
+  @Test
+  @Order(18)
+  void aBundleOpaCannotLoadFailsClosedUntilRolledBack() throws Exception {
+    Map<String, String> v1 = releaseRevisions();
+    byte[] broken = Bundles.withBrokenPolicy(Files.readAllBytes(PlatformContainers.bundle("naming")), "naming-it-broken", "naming");
+    String brokenId = uploadBundle(broken, "naming broken");
+    client.post().uri("/api/v1/admin/policy-bundles/" + brokenId + "/activate").header("Authorization", "Bearer " + ADMIN).exchange().expectStatus().isOk();
+
+    // Governance now expects naming-it-broken while OPA keeps the previous revision: decisions fail closed, readiness is down.
+    await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofSeconds(1)).untilAsserted(() ->
+        submit(DEV, manifest("development", List.of(topic("team-a.orders", 6)), List.of()), "broken-" + UUID.randomUUID())
+            .expectStatus().isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+    assertThat(diagnostics()).containsEntry("match", false);
+    client.get().uri("/actuator/health/readiness").exchange().expectStatus().isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
+        .expectBody().jsonPath("$.components.policyRelease.status").isEqualTo("DOWN");
+
+    client.post().uri("/api/v1/admin/policy-bundles/rollback?bundle=naming").header("Authorization", "Bearer " + ADMIN).exchange().expectStatus().isOk();
+    awaitRelease(v1);
+    submit(DEV, manifest("development", List.of(topic("team-a.orders", 6), topic("team-a.payments", 3), topic("team-a.audit", 1)), List.of()), "recovered-" + UUID.randomUUID())
+        .expectStatus().isAccepted();
   }
 }

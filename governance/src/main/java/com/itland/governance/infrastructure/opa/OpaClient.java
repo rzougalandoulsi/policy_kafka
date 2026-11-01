@@ -65,23 +65,39 @@ public class OpaClient {
         });
   }
 
-  /** Revision of the bundle OPA currently runs, from data.system.bundles.<name>.manifest.revision. */
-  public Mono<String> loadedRevision() {
+  /** Revision per bundle name OPA currently runs, from data.system.bundles.<name>.manifest.revision. Empty when none is loaded. */
+  public Mono<Map<String, String>> loadedRevisions() {
     return client.get()
-        .uri("/v1/data/system/bundles/{name}/manifest/revision", opa.bundleName())
+        .uri("/v1/data/system/bundles")
         .retrieve()
-        .bodyToMono(RevisionResult.class)
-        .map(r -> r.result() == null ? "" : r.result())
+        .bodyToMono(SystemBundles.class)
+        .map(r -> {
+          Map<String, String> out = new java.util.TreeMap<>();
+          if (r.result() != null) r.result().forEach((name, b) -> {
+            if (b != null && b.manifest() != null && b.manifest().revision() != null) out.put(name, b.manifest().revision());
+          });
+          return out;
+        })
+        .onErrorMap(OpaClient::mapError);
+  }
+
+  /** data.governance.core.ready: true only when every required bundle is loaded with a compatible contract version. */
+  public Mono<Boolean> ready() {
+    return client.get()
+        .uri(opa.readyPath())
+        .retrieve()
+        .bodyToMono(BoolResult.class)
+        .map(r -> Boolean.TRUE.equals(r.result()))
         .onErrorMap(OpaClient::mapError);
   }
 
   /**
-   * Policy catalogue declared by the active bundle (data.governance.catalog.policies): id, kind, severity,
+   * Merged policy catalogue of the loaded bundles (data.governance.core.policy_catalog): id, bundle, kind, severity,
    * bypassable flag, section, stages, description. Empty when no bundle is loaded.
    */
   public Mono<List<Map<String, Object>>> catalog() {
     return client.get()
-        .uri("/v1/data/governance/catalog/policies")
+        .uri(opa.catalogPath())
         .retrieve()
         .onStatus(HttpStatusCode::is5xxServerError, r -> r.createException().map(e -> new OpaException("OPA server error " + r.statusCode(), e, true)))
         .bodyToMono(CatalogResult.class)
@@ -111,7 +127,16 @@ public class OpaClient {
   }
 
   @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
-  record RevisionResult(String result) {}
+  record SystemBundles(Map<String, BundleStatus> result) {}
+
+  @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+  record BundleStatus(BundleManifest manifest) {}
+
+  @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+  record BundleManifest(String revision) {}
+
+  @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+  record BoolResult(Boolean result) {}
 
   @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
   record CatalogResult(List<Map<String, Object>> result) {}

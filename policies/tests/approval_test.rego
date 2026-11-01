@@ -1,6 +1,6 @@
-package governance.approval_test
+package governance.changes.approval_test
 
-import data.governance.approval
+import data.governance.changes.approval
 import data.governance.fixtures as f
 
 ids(xs) := {a.policyId | some a in xs}

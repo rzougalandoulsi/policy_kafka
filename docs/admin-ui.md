@@ -31,10 +31,11 @@ A hidden button is not a security boundary: Governance checks the same roles on 
 surfaces its `403 FORBIDDEN` answer as-is.
 
 ## Policy catalogue
-`GET /api/v1/admin/policies` relays `data.governance.catalog.policies` from the active bundle
-(`policies/governance/catalog.rego`). The exception form uses it to offer only **bypassable** policies: an
-exception on a `HARD_DENY` policy (such as `RBAC_ADMIN_ROLE_FORBIDDEN`) or on an approval requirement would be
-accepted by the API but never apply. `catalog_test.rego` fails when a rule emits an id missing from the catalogue.
+`GET /api/v1/admin/policies` relays the merged catalogue `data.governance.core.policy_catalog`: every bundle under
+`policies/bundles/` declares the policies it can emit, and `core` concatenates them with a `bundle` field. The
+exception form uses it to offer only **bypassable** policies: an exception on a `HARD_DENY` policy (such as
+`RBAC_ADMIN_ROLE_FORBIDDEN`) or on an approval requirement would be accepted by the API but never apply.
+`policies/tests/catalog_test.rego` fails when a rule emits an id missing from the catalogue.
 
 ## Sign-in
 Authorization Code + PKCE (`oidc-client-ts`). Two subtleties worth knowing:

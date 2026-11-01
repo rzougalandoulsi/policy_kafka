@@ -27,11 +27,12 @@ class PolicyBundleServiceTest {
   private final PolicyBundleService service = new PolicyBundleService(mock(PolicyBundleRepository.class), mock(AuditService.class),
       new Json(JsonMapper.builder().build()), Clock.systemUTC(), mock(OpaClient.class), new GovernanceMetrics(new SimpleMeterRegistry()),
       mock(TransactionTemplate.class), new GovernanceProperties(null,
-          new GovernanceProperties.Opa("http://opa", "/v1/data/governance/decision", "governance", Duration.ofSeconds(1), Duration.ofSeconds(1), 0, Duration.ofMillis(1), true, "t"),
+          new GovernanceProperties.Opa("http://opa", "/v1/data/governance/core/decision", "/v1/data/governance/core/policy_catalog", "/v1/data/governance/core/ready",
+            List.of("core", "manifests", "naming", "quotas", "resources", "changes"), Duration.ofSeconds(1), Duration.ofSeconds(1), 0, Duration.ofMillis(1), true, "t"),
           null, new GovernanceProperties.Workflow(Duration.ofMinutes(15), Duration.ofHours(72), 3, Duration.ofSeconds(30)),
           new GovernanceProperties.Outbox(Duration.ofMillis(500), 100, 10, Duration.ofSeconds(2)), new GovernanceProperties.Inbox(200, Duration.ofSeconds(5))));
 
-  static final Path BUNDLE = Path.of("..", "policies", "dist", "governance-bundle.tar.gz");
+  static final Path BUNDLE = Path.of("..", "policies", "dist", "core-bundle.tar.gz");
   static final Path REPORT = Path.of("..", "policies", "dist", "test-report.json");
 
   @Test
@@ -39,7 +40,16 @@ class PolicyBundleServiceTest {
     org.junit.jupiter.api.Assumptions.assumeTrue(Files.exists(BUNDLE), "run policies/build.sh first");
     Map<String, Object> manifest = service.inspect(Files.readAllBytes(BUNDLE));
     assertThat(manifest).containsKey("revision");
-    assertThat(String.valueOf(manifest.get("roots"))).contains("governance");
+    assertThat(service.bundleNameOf(manifest)).isEqualTo("core");
+  }
+
+  @Test
+  void rejectsBundlesOutsideTheSixRoots() throws Exception {
+    org.junit.jupiter.api.Assumptions.assumeTrue(Files.exists(BUNDLE), "run policies/build.sh first");
+    byte[] foreign = com.itland.governance.support.Bundles.withRevision(Files.readAllBytes(BUNDLE), "x-1", "other");
+    assertThatThrownBy(() -> service.inspect(foreign)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Unknown bundle");
+    assertThatThrownBy(() -> service.bundleNameOf(Map.of("roots", List.of("governance")))).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> service.bundleNameOf(Map.of("roots", List.of("governance/core", "governance/naming")))).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test

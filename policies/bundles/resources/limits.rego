@@ -1,6 +1,6 @@
-package governance.limits
+package governance.resources.limits
 
-import data.governance.helpers as h
+import data.governance.resources.lib as h
 
 # MAX_TOPICS_PER_MANIFEST (bypassable)
 violations contains h.violation("MAX_TOPICS_PER_MANIFEST", "DENY", msg, "MANIFEST", input.manifest.repositoryId, true) if {
@@ -15,18 +15,6 @@ violations contains h.violation("MAX_PARTITIONS_PER_TOPIC", "DENY", msg, "TOPIC"
 	some t in input.manifest.topics
 	t.partitions > h.limit("maxPartitionsPerTopic")
 	msg := sprintf("topic '%s' requests %d partitions, maximum is %d", [t.name, t.partitions, h.limit("maxPartitionsPerTopic")])
-}
-
-# MAX_PARTITIONS_PER_PLAN: sum of partitions created by one plan (bypassable)
-violations contains h.violation("MAX_PARTITIONS_PER_PLAN", "DENY", msg, "PLAN", input.plan.planId, true) if {
-	h.stage_plan
-	total := sum([p |
-		some a in input.actions
-		a.actionType == "TOPIC_CREATE"
-		p := to_number(object.get(a.payload, "partitions", "0"))
-	])
-	total > h.limit("maxPartitionsPerPlan")
-	msg := sprintf("plan creates %d partitions, maximum is %d", [total, h.limit("maxPartitionsPerPlan")])
 }
 
 # TOPIC_RETENTION_LIMIT: retention.ms must not exceed the limit; -1 (infinite) is never allowed (bypassable)
