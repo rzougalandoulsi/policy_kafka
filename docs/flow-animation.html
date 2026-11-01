@@ -15,13 +15,16 @@
     - decision precedence ................... policies/governance/decision.rego (HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW)
     - policy ids, severity, bypassable ...... policies/governance/catalog.rego
     - REST endpoints and status codes ....... docs/governance.md
+    - services and ports (component map) .... deploy/docker-compose.yml
+    - tables (component map) ................ governance/src/main/resources/db/migration/
+    - proxy and sign-in wiring .............. docs/admin-ui.md
   GitHub shows this file as source. Open it from a checkout (file://) or any static server.
 -->
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6676; --line: #d9dee6; --rail: #c5ccd6;
     --accent: #2457d6; --http: #2457d6; --cmd: #c2620a; --evt: #7a3fb3; --opa: #0f8a5f; --other: #6b7482; --internal: #3b4452;
-    --ok: #0f8a5f; --deny: #c92a2a; --error: #b45309; --approval: #8a5a00;
+    --ok: #0f8a5f; --deny: #c92a2a; --error: #b45309; --approval: #8a5a00; --bundle: #0b7285;
     --ok-bg: #e5f6ee; --deny-bg: #fbe7e7; --error-bg: #fdf0df; --approval-bg: #fbf1d6; --info-bg: #e8eefb; --neutral-bg: #eef1f5;
     --focus: #2457d6; --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .1);
     color-scheme: light;
@@ -30,7 +33,7 @@
     :root:not([data-theme="light"]) {
       --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #9aa4b2; --line: #2a323e; --rail: #3a4452;
       --accent: #7ea2ff; --http: #7ea2ff; --cmd: #f0a35a; --evt: #c08df0; --opa: #4fd1a0; --other: #9aa4b2; --internal: #b8c1cd;
-      --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d;
+      --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d; --bundle: #5fd3e6;
       --ok-bg: #12332a; --deny-bg: #3a1a1c; --error-bg: #3a2a14; --approval-bg: #38300f; --info-bg: #1b2740; --neutral-bg: #222a35;
       --shadow: none; color-scheme: dark;
     }
@@ -38,7 +41,7 @@
   :root[data-theme="dark"] {
     --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #9aa4b2; --line: #2a323e; --rail: #3a4452;
     --accent: #7ea2ff; --http: #7ea2ff; --cmd: #f0a35a; --evt: #c08df0; --opa: #4fd1a0; --other: #9aa4b2; --internal: #b8c1cd;
-    --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d;
+    --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d; --bundle: #5fd3e6;
     --ok-bg: #12332a; --deny-bg: #3a1a1c; --error-bg: #3a2a14; --approval-bg: #38300f; --info-bg: #1b2740; --neutral-bg: #222a35;
     --shadow: none; color-scheme: dark;
   }
@@ -73,6 +76,7 @@
   .scenario-intro { margin: 0 0 14px; color: var(--muted); max-width: 90ch; }
   .layout { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 4fr); gap: 16px; align-items: start; }
   @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .transport { margin-left: 0; } }
+  .layout.cview { grid-template-columns: 1fr; } .layout.cview .log { max-height: 46vh; } .layout.cview .diagram { max-height: none; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
   .diagram { padding: 0 8px 12px; overflow: auto; max-height: 76vh; }
   .diagram svg { display: block; width: 100%; height: auto; min-width: 760px; }
@@ -119,18 +123,64 @@
   .pulse { animation: pulse .9s ease-out 1; transform-box: fill-box; transform-origin: center; }
   @keyframes pulse { 0% { transform: scale(1); } 40% { transform: scale(1.04); } 100% { transform: scale(1); } }
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } .step { transition: none; } }
+
+  /* view switch, details panel, component map */
+  [hidden] { display: none !important; }
+  .views { display: flex; gap: 6px; padding: 8px 0 0; }
+  .views button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 14px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; }
+  .views button[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .details { padding: 12px 14px 14px; font-size: 14px; }
+  .details h3 { margin: 0 0 2px; font-size: 16px; } .details .sub { color: var(--muted); margin: 0 0 8px; font-size: 13px; }
+  .details p { margin: 6px 0; } .details ul { margin: 8px 0; padding-left: 18px; } .details li { margin: 3px 0; }
+  .details code { background: var(--neutral-bg); padding: 1px 6px; border-radius: 6px; font-size: 12px; word-break: break-all; }
+  .details li, .details li:hover { padding: 0; margin: 3px 0; border: 0; background: none; cursor: default; position: static; opacity: 1; }
+  .details .back { margin-top: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  .caption { margin: 10px 8px 0; color: var(--muted); font-size: 13px; }
+  .components svg { min-width: 980px; }
+  .zone rect { fill: var(--neutral-bg); stroke: var(--line); stroke-dasharray: 4 4; }
+  .zone text { font-size: 11px; fill: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .zone .zone-note { text-transform: none; font-weight: 400; letter-spacing: 0; font-size: 10.5px; }
+  .cnode rect { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; cursor: pointer; transition: stroke .2s, fill .2s; }
+  .cnode text { pointer-events: none; }
+  .cnode .n-title { font-size: 13px; font-weight: 600; fill: var(--ink); }
+  .cnode.topic .n-title { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+  .cnode .n-sub { font-size: 10.5px; fill: var(--muted); }
+  .cnode .n-item { font-size: 10.5px; fill: var(--ink); }
+  .cnode .n-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 9.5px; fill: var(--ink); }
+  .cnode .n-group { font-size: 10.5px; font-weight: 600; fill: var(--muted); }
+  .cnode.visited rect { stroke: var(--accent); }
+  .cnode.active rect { stroke: var(--accent); stroke-width: 2.5; fill: var(--info-bg); }
+  .cnode.selected rect { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 5 3; }
+  .cnode:focus-visible { outline: none; } .cnode:focus-visible rect { stroke: var(--focus); stroke-width: 2.5; }
+  .badge { fill: var(--accent); stroke: var(--panel); stroke-width: 1.5; } .badge-text { fill: #fff; font-size: 10px; font-weight: 700; }
+  .clink .link { fill: none; stroke: var(--rail); stroke-width: 1.5; transition: stroke .2s, opacity .2s; }
+  .clink .link-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
+  .clink.used .link { stroke: currentColor; opacity: .8; }
+  .clink.active .link { stroke: currentColor; stroke-width: 3; opacity: 1; }
+  .clink.hl .link { stroke: currentColor; stroke-width: 2.5; }
+  .clink .link-label { font-size: 10px; fill: var(--muted); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+  .clink.used .link-label, .clink.active .link-label, .clink.hl .link-label { fill: var(--ink); }
+  .clink:focus-visible { outline: none; } .clink:focus-visible .link { stroke: var(--focus); stroke-width: 3; }
+  .dim { opacity: .22; }
+  .lk-http { color: var(--http); } .lk-oidc { color: var(--approval); } .lk-opa { color: var(--opa); } .lk-bundle { color: var(--bundle); }
+  .lk-jdbc { color: var(--internal); } .lk-cmd { color: var(--cmd); } .lk-evt { color: var(--evt); } .lk-other { color: var(--other); }
+  .lk-rail { color: var(--rail); }
 </style>
 </head>
 <body>
 <header>
   <div>
     <h1>Governance flow explainer</h1>
-    <p>How a manifest travels from the client through Governance, OPA and the two Kafka protocol topics to the Orchestrator, and back. Pick a scenario, press play, or step through with <kbd>←</kbd> <kbd>→</kbd> and <kbd>space</kbd>.</p>
+    <p>How a manifest travels from the client through Governance, OPA and the two Kafka protocol topics to the Orchestrator, and back. Two views of the same scenarios: a sequence diagram, and a component map that traces each step across the running services. Pick a scenario, press play, or step through with <kbd>←</kbd> <kbd>→</kbd> and <kbd>space</kbd>.</p>
   </div>
   <button class="theme" id="theme" type="button" aria-label="Toggle colour theme">Theme: auto</button>
 </header>
 <noscript>This explainer needs JavaScript. The same flow is described in text in <code>README.md</code> ("Flow") and <code>docs/governance.md</code> ("Request lifecycle").</noscript>
 <main class="wrap">
+  <div class="views" role="tablist" aria-label="View" id="views">
+    <button type="button" role="tab" data-view="sequence" aria-selected="true">Sequence diagram</button>
+    <button type="button" role="tab" data-view="components" aria-selected="false">Component map</button>
+  </div>
   <div class="toolbar">
     <div class="tabs" role="tablist" aria-label="Scenario" id="tabs"></div>
     <div class="transport">
@@ -149,16 +199,32 @@
     <span class="trail" id="trail" aria-label="Status history"></span>
   </div>
   <div class="layout">
-    <section class="panel diagram" aria-label="Sequence diagram">
+    <section class="panel diagram" id="spanel" aria-label="Sequence diagram">
       <div class="lanes"><svg id="lanes" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg></div>
       <svg id="svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svgtitle"><title id="svgtitle">Sequence diagram of the selected scenario</title></svg>
     </section>
-    <aside class="panel log" aria-label="Step log">
-      <h2>Steps</h2>
+    <section class="panel diagram components" id="cpanel" aria-label="Component map" hidden>
+      <svg id="csvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="csvgtitle"><title id="csvgtitle">Component map: services, database, Kafka topics and clients</title></svg>
+      <p class="caption">Click a service, topic or link for details. Press play or step through: the scenario is traced across the components, and each badge shows the latest step that touched that component.</p>
+    </section>
+    <aside class="panel log" aria-label="Step log and details">
+      <h2 id="asideTitle">Steps</h2>
+      <div id="details" class="details" hidden></div>
       <ol id="log"></ol>
     </aside>
   </div>
-  <ul class="legend">
+  <ul class="legend" id="clegend" hidden>
+    <li style="--c: var(--http)">HTTP (REST, browser)</li>
+    <li style="--c: var(--approval)">OIDC sign-in, JWKS</li>
+    <li style="--c: var(--opa)">OPA decision call</li>
+    <li style="--c: var(--bundle)">OPA bundle poll</li>
+    <li style="--c: var(--internal)">JDBC</li>
+    <li style="--c: var(--cmd)"><code>requests.manifest</code> commands</li>
+    <li style="--c: var(--evt)"><code>response.manifest</code> events</li>
+    <li style="--c: var(--other)">existing topics</li>
+    <li style="--c: var(--rail)">grey: not used by the current scenario yet</li>
+  </ul>
+  <ul class="legend" id="slegend">
     <li style="--c: var(--http)">HTTP (REST API)</li>
     <li style="--c: var(--opa)">OPA decision call</li>
     <li style="--c: var(--cmd)"><code>requests.manifest</code> command</li>
@@ -176,7 +242,7 @@
       <li>The Orchestrator releases Actions only after verifying <code>decisionId + planId + planDigest + stateVersion</code>. A plan computed against an older <code>stateVersion</code> ends as <code>STALE_PLAN</code>.</li>
       <li>OPA unreachable, bundle revision mismatch or a Java/Rego disagreement all yield <code>ERROR</code>: nothing is published and the API answers 503.</li>
     </ul>
-    <p>Sources: <code>docs/governance.md</code>, <code>docs/kafka-contract.md</code>, <code>RequestLifecycle.java</code>, <code>GovernanceTypes.avsc</code>, <code>decision.rego</code>, <code>catalog.rego</code>. Keep this page in step with them.</p>
+    <p>Sources: <code>docs/governance.md</code>, <code>docs/kafka-contract.md</code>, <code>docs/admin-ui.md</code>, <code>deploy/docker-compose.yml</code>, the Flyway migrations, <code>RequestLifecycle.java</code>, <code>GovernanceTypes.avsc</code>, <code>decision.rego</code>, <code>catalog.rego</code>. Keep this page in step with them.</p>
   </section>
 </main>
 <script>
@@ -388,7 +454,7 @@
   const STATUS_TONE = { COMPLETED: 'ok', SUBMITTED: 'info', PLAN_PROPOSED: 'info', PLAN_AUTHORIZED: 'info', RECEIVED: 'info', STAGE1_DENIED: 'deny', PLAN_REJECTED: 'deny', FAILED: 'deny', REJECTED_BY_ORCHESTRATOR: 'deny', STALE_PLAN: 'deny', EVALUATION_ERROR: 'error', PENDING_APPROVAL_STAGE1: 'approval', PENDING_APPROVAL_STAGE2: 'approval', APPROVAL_EXPIRED: 'approval' };
 
   // ---------- state ----------
-  const state = { scenario: SCENARIOS[0], index: -1, playing: false, speed: 1, timer: null };
+  const state = { scenario: SCENARIOS[0], index: -1, playing: false, speed: 1, timer: null, view: 'sequence', selected: null };
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const $ = (id) => document.getElementById(id);
   const svgNS = 'http://www.w3.org/2000/svg';
@@ -556,16 +622,315 @@
   }
 
   function render(animateLast) {
-    renderSvg(animateLast);
+    if (state.view === 'components') renderComponents(animateLast); else renderSvg(animateLast);
     renderLog();
+    renderDetails();
     renderStatus();
-    history.replaceState(null, '', `#s=${state.scenario.key}&i=${state.index + 1}`);
+    history.replaceState(null, '', `#v=${state.view}&s=${state.scenario.key}&i=${state.index + 1}`);
   }
+
+
+  // ---------- component map ----------
+  // Services from deploy/docker-compose.yml, tables from the Flyway migrations, topics from docs/kafka-contract.md.
+  const CW = 1200, CH = 632;
+  const ZONES = [
+    { title: 'Clients', x: 16, y: 16, w: 170, h: 600 },
+    { title: 'Edge & identity', x: 206, y: 16, w: 180, h: 600 },
+    { title: 'Governance (this repo)', x: 406, y: 16, w: 290, h: 600 },
+    { title: 'Policy engine', x: 716, y: 16, w: 170, h: 160 },
+    { title: 'Kafka · KRaft · SASL + ACLs', x: 716, y: 190, w: 170, h: 426 },
+    { title: 'Execution plane (existing)', x: 906, y: 16, w: 288, h: 600,
+      note: ['Not implemented in this repo. The two', 'simulators mirror the contract the real', 'Orchestrator and Processor must honour', '(docs/orchestrator-integration.md).'] },
+  ];
+  const NODES = {
+    developer: { x: 26, y: 150, w: 150, h: 64, title: 'Developer / CI', sub: 'REST client + JWT', kind: 'Client',
+      desc: 'Submits manifests and polls their status. Identity (sub, teams[], environments[], roles[]) comes from the JWT; nothing privileged is read from request bodies.',
+      items: ['1. Obtain a token from the OIDC issuer (locally: deploy/scripts/token.sh).', '2. POST /api/v1/manifests with an Idempotency-Key; 202 accepted or pending approval, 422 denied, 503 fail closed.', '3. Poll GET /api/v1/requests/{id}, /decisions and /plan until a terminal status.', '4. If approval is required, an approver decides; the request then continues on its own.'],
+      code: 'governance/src/main/java/com/itland/governance/api/manifest/ManifestController.java' },
+    approver: { x: 26, y: 240, w: 150, h: 64, title: 'Approver', sub: 'role governance-approver', kind: 'Client',
+      desc: 'Lists pending approvals and posts decisions. Quorum, separation of duties and TTL come from the active approval configuration. On quorum Governance revalidates before it authorises.',
+      items: ['GET /api/v1/approvals, GET /api/v1/approvals/{id}', 'POST /api/v1/approvals/{id}/decisions (idempotent per approver)'],
+      code: 'governance/src/main/java/com/itland/governance/api/approvals/ApprovalController.java' },
+    browser: { x: 26, y: 330, w: 150, h: 64, title: 'Admin (browser)', sub: 'admin console on :3000', kind: 'Client',
+      desc: 'Admins and auditors use the React admin console to manage scoped exceptions, policy configuration versions, policy bundles, approval rules and to read the audit log. The browser only ever talks to its own origin.',
+      items: ['OIDC Authorization Code + PKCE through the /oidc proxy', 'Bearer token sent on /api/* calls', 'Auditors read-only, admins get write controls; the API stays the enforcer'],
+      code: 'admin-ui/src/App.tsx' },
+    oidc: { x: 216, y: 46, w: 160, h: 64, title: 'mock-oidc', sub: 'OIDC issuer (mock-oauth2-server)', kind: 'Identity provider',
+      desc: 'Issues JWTs with roles, teams and environments claims. Locally the issuer is http://mock-oidc:8080/default; Governance validates tokens against its JWKS. In production this is the corporate identity provider.',
+      items: ['Discovery and token endpoints', 'JWKS used by Governance to validate signatures', 'Issuer derived from the Host header, which is why the nginx proxy pins it'],
+      code: 'deploy/docker-compose.yml (service mock-oidc)' },
+    adminui: { x: 216, y: 320, w: 160, h: 84, title: 'admin-ui', sub: 'nginx: SPA + reverse proxy', kind: 'Service',
+      lines: ['/api/*  → governance', '/oidc/* → mock-oidc'],
+      desc: 'Serves the built React app and keeps the browser same-origin: /api/* is proxied to Governance and /oidc/* to the identity provider with a pinned Host header. Runtime configuration is injected as /env.js when the container starts.',
+      items: ['Security headers and CSP, long cache for hashed assets', 'Health at /healthz', 'No CORS on Governance is needed'],
+      code: 'admin-ui/nginx/default.conf.template' },
+    governance: { x: 416, y: 46, w: 270, h: 284, title: 'governance', sub: 'Spring Boot 4 · WebFlux · JWT resource server', kind: 'Service',
+      lines: ['REST API: manifests · requests · approvals · admin', 'Stage 1 + stage 2 evaluation through OPA', 'RequestLifecycle + request_status_history', 'Approvals: quorum, SoD, TTL, revalidation', 'Outbox relay → requests.manifest', 'Inbox + dead letters ← response.manifest', 'Policy bundles, configuration, exceptions', 'Bundle server for OPA · audit log · metrics'],
+      desc: 'The single governance application (ADR 0001). It owns the request lifecycle, asks OPA for every decision, publishes commands through a transactional outbox and consumes the Orchestrator’s events through an inbox. JDBC runs on a dedicated blocking scheduler (ADR 0003).',
+      items: ['Fails closed: OPA unreachable, bundle revision mismatch or Java/Rego disagreement all yield ERROR and 503', 'Serves the active policy bundle to OPA at /internal/opa/bundles/governance', 'Every state change and admin action is audited'],
+      code: 'governance/src/main/java/com/itland/governance' },
+    postgres: { x: 416, y: 370, w: 270, h: 246, title: 'postgres', sub: 'Flyway migrations · 15 tables', kind: 'Database',
+      lines: ['#requests', 'manifest_request · request_status_history', 'governance_decision · proposed_plan', 'repository_state', '#approvals', 'approval_request · approval_decision', 'approval_configuration', '#policy', 'policy_configuration · policy_bundle_version', 'policy_exception', '#messaging', 'kafka_outbox · kafka_inbox', 'kafka_dead_letter', '#audit', 'audit_record'],
+      desc: 'System of record for Governance. A status transition, its history row, the decision and the outbox row are written in one transaction; manifest_request.version gives optimistic locking.',
+      items: ['requests: manifest_request, request_status_history, governance_decision, proposed_plan, repository_state (latest confirmed stateVersion)', 'approvals: approval_request, approval_decision, approval_configuration', 'policy: policy_configuration, policy_bundle_version (bundle bytes + test report), policy_exception', 'messaging: kafka_outbox, kafka_inbox, kafka_dead_letter', 'audit: audit_record'],
+      code: 'governance/src/main/resources/db/migration/' },
+    opa: { x: 726, y: 46, w: 150, h: 120, title: 'opa', sub: 'Open Policy Agent', kind: 'Policy engine',
+      lines: ['data.governance.decision', 'data.governance.catalog', 'polls the bundle from governance'],
+      desc: 'Runs the Rego v1 bundle built from policies/governance. Governance calls the decision document with the full input (stage, principal, manifest or plan, configuration, exceptions) and checks that the bundle revision OPA reports equals the ACTIVE one.',
+      items: ['Decision precedence HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW', 'catalog.rego publishes every policy id with severity and bypassable flag for the admin console', 'A bundle OPA does not adopt within 90 s is marked FAILED and the previous one restored'],
+      code: 'policies/governance/decision.rego' },
+    't-requests': { topic: true, x: 734, y: 216, w: 134, h: 52, title: 'requests.manifest', sub: 'commands · key teamId', kind: 'Kafka topic',
+      desc: 'Governance → Orchestrator. ManifestCommand (Avro): SUBMIT_MANIFEST, AUTHORIZE_PLAN, REJECT_PLAN. Published by the outbox relay with an idempotent producer.',
+      items: ['Carries requestId, teamId, repositoryId, environment and, after stage 2, planId, planDigest, decisionId', 'Same partition count as teams.repo.manifest so the Orchestrator can co-locate state'],
+      code: 'contracts/src/main/avro/ManifestCommand.avsc' },
+    't-response': { topic: true, x: 734, y: 284, w: 134, h: 52, title: 'response.manifest', sub: 'events · key teamId', kind: 'Kafka topic',
+      desc: 'Orchestrator → Governance. ManifestEvent (Avro): PLAN_PROPOSED, MANIFEST_COMPLETED, MANIFEST_FAILED, MANIFEST_REJECTED. Consumed with manual commits into the inbox keyed by eventId.',
+      items: ['PLAN_PROPOSED carries planId, planDigest and stateVersion; Governance recomputes the digest', 'Duplicates ignored, out-of-order events recorded as IGNORED, exhausted retries dead-lettered'],
+      code: 'contracts/src/main/avro/ManifestEvent.avsc' },
+    't-repo': { topic: true, x: 734, y: 352, w: 134, h: 52, title: 'teams.repo.manifest', sub: 'confirmed state', kind: 'Kafka topic',
+      desc: 'Existing topic. The Orchestrator keeps the confirmed state (RepoConfirmed) per team, repository and environment here; stateVersion is incremented on every reconcile and is what makes stale plans detectable.',
+      items: ['Additive fields only: RepoConfirmed.stateVersion and environment', 'Must have the same partition count as requests.manifest'],
+      code: 'docs/kafka-contract.md' },
+    't-changes': { topic: true, x: 734, y: 420, w: 134, h: 52, title: 'teams.changes', sub: 'Actions to apply', kind: 'Kafka topic',
+      desc: 'Existing topic. The Orchestrator releases the authorised plan’s Actions here, and only after verifying decisionId, planId, planDigest and stateVersion. The Processor applies them to the cluster.',
+      items: ['EndOfBatch now carries requestId, planId, teamId, repoId and environment'],
+      code: 'docs/kafka-contract.md' },
+    't-status': { topic: true, x: 734, y: 488, w: 134, h: 52, title: 'request.status', sub: 'execution results', kind: 'Kafka topic',
+      desc: 'Existing topic. The Processor reports the result of each Action; the Orchestrator reconciles them, bumps stateVersion and then emits MANIFEST_COMPLETED or MANIFEST_FAILED.',
+      items: ['Unchanged contract'],
+      code: 'docs/kafka-contract.md' },
+    registry: { x: 734, y: 560, w: 134, h: 44, title: 'schema-registry', sub: 'Avro schemas', kind: 'Service',
+      desc: 'Every producer and consumer serialises with Avro through the schema registry. Schemas live in contracts/ and are generated into Java classes at build time.',
+      items: ['Governance: SCHEMA_REGISTRY_URL', 'Simulators use the same contracts module'],
+      code: 'contracts/src/main/avro/' },
+    orchestrator: { x: 916, y: 200, w: 268, h: 270, title: 'orchestrator-simulator', sub: 'stand-in for the real Orchestrator', kind: 'Service (simulator)',
+      lines: ['consumes requests.manifest commands', 'diffs desired vs confirmed state', 'immutable plan: planId · planDigest · stateVersion', 'publishes response.manifest events', 'checks decisionId · planId · digest · stateVersion', 'releases Actions to teams.changes', 'reconciles results → stateVersion + 1'],
+      desc: 'Mirrors what the real Orchestrator must add to join the handshake: re-key commands to teamId|repoId|environment, keep the pending plan next to the confirmed state, treat a duplicate AUTHORIZE_PLAN as a no-op, and drop plans on REJECT_PLAN.',
+      items: ['Never releases anything without a matching AUTHORIZE_PLAN', 'planDigest = SHA-256(sorted actions + manifestDigest + stateVersion)'],
+      code: 'orchestrator-simulator/' },
+    processor: { x: 916, y: 545, w: 268, h: 70, title: 'processor-simulator', sub: 'applies Actions · reports results', kind: 'Service (simulator)',
+      desc: 'Consumes Actions from teams.changes, applies them (here: simulated) and reports per-Action results on request.status.',
+      items: ['Unchanged by the Governance handshake'],
+      code: 'processor-simulator/' },
+  };
+  const LINKS = [
+    { id: 'l-dev', from: 'developer', to: 'governance', kind: 'http', label: 'POST /api/v1/manifests · GET /requests/{id}', pts: [[176, 182], [416, 182]], desc: 'HTTPS with a bearer JWT. Idempotency-Key makes retries safe; the Location header points at the status resource.' },
+    { id: 'l-appr', from: 'approver', to: 'governance', kind: 'http', label: 'approvals: list · POST /{id}/decisions', pts: [[176, 272], [416, 272]], desc: 'HTTPS with a bearer JWT carrying the governance-approver role.' },
+    { id: 'l-browser', from: 'browser', to: 'adminui', kind: 'http', label: ':3000', pts: [[176, 362], [216, 362]], desc: 'The SPA, /env.js and all API and OIDC traffic go to this one origin.' },
+    { id: 'l-ui-api', from: 'adminui', to: 'governance', kind: 'http', label: '/api/* + bearer JWT', pts: [[376, 345], [396, 345], [396, 320], [416, 320]], desc: 'nginx forwards /api/* unchanged to Governance; the browser’s access token travels as Authorization: Bearer.' },
+    { id: 'l-ui-oidc', from: 'adminui', to: 'oidc', kind: 'oidc', label: '/oidc/* proxy', pts: [[296, 320], [296, 110]], desc: 'Authorization code + PKCE from the browser, proxied with Host: mock-oidc. The proxy pins the Host header so the issuer in the minted token is exactly the one Governance validates.' },
+    { id: 'l-jwks', from: 'governance', to: 'oidc', kind: 'oidc', label: 'JWKS', pts: [[416, 78], [376, 78]], desc: 'Governance fetches the signing keys from the issuer to validate every JWT.' },
+    { id: 'l-decision', from: 'governance', to: 'opa', kind: 'opa', label: 'decision', pts: [[686, 96], [726, 96]], desc: 'POST /v1/data/governance/decision?provenance=true, one call per stage. Timeouts, bounded retries, revision check.' },
+    { id: 'l-bundle', from: 'opa', to: 'governance', kind: 'bundle', label: 'bundle poll', pts: [[726, 136], [686, 136]], desc: 'GET /internal/opa/bundles/governance: OPA polls the ACTIVE bundle with a static bearer token; ETag / 304 when unchanged.' },
+    { id: 'l-jdbc', from: 'governance', to: 'postgres', kind: 'jdbc', label: 'JDBC', pts: [[551, 330], [551, 370]], both: true, desc: 'All persistence. One transaction per transition: status, history, decision, outbox row.' },
+    { id: 'l-produce-cmd', from: 'governance', to: 't-requests', kind: 'cmd', label: 'outbox', pts: [[686, 242], [734, 242]], desc: 'The outbox relay publishes claimed rows with an idempotent producer, keyed by teamId.' },
+    { id: 'l-consume-evt', from: 't-response', to: 'governance', kind: 'evt', label: 'inbox', pts: [[734, 310], [686, 310]], desc: 'Manual commits; insertIfAbsent on eventId drops duplicates before any handler runs.' },
+    { id: 'l-orch-cmd', from: 't-requests', to: 'orchestrator', kind: 'cmd', label: 'consume', pts: [[868, 242], [916, 242]], desc: 'SUBMIT_MANIFEST starts a diff; AUTHORIZE_PLAN releases; REJECT_PLAN drops the pending plan.' },
+    { id: 'l-orch-evt', from: 'orchestrator', to: 't-response', kind: 'evt', label: 'produce', pts: [[916, 310], [868, 310]], desc: 'PLAN_PROPOSED after the diff, MANIFEST_COMPLETED or MANIFEST_FAILED after reconcile, MANIFEST_REJECTED when a request cannot be served.' },
+    { id: 'l-orch-repo', from: 'orchestrator', to: 't-repo', kind: 'other', label: 'state', pts: [[916, 378], [868, 378]], both: true, desc: 'Confirmed state per team, repository and environment with its stateVersion.' },
+    { id: 'l-orch-changes', from: 'orchestrator', to: 't-changes', kind: 'other', label: 'Actions', pts: [[916, 446], [868, 446]], desc: 'Released only after the authorisation check passes.' },
+    { id: 'l-orch-status', from: 't-status', to: 'orchestrator', kind: 'other', label: 'results', pts: [[868, 514], [940, 514], [940, 470]], desc: 'Reconciled into the confirmed state; stateVersion is incremented.' },
+    { id: 'l-proc-changes', from: 't-changes', to: 'processor', kind: 'other', label: '', pts: [[868, 458], [906, 458], [906, 565], [916, 565]], desc: 'The Processor consumes Actions.' },
+    { id: 'l-proc-status', from: 'processor', to: 't-status', kind: 'other', label: '', pts: [[916, 595], [892, 595], [892, 526], [868, 526]], desc: 'The Processor reports results.' },
+  ];
+  const LINK_KINDS = ['http', 'oidc', 'opa', 'bundle', 'jdbc', 'cmd', 'evt', 'other', 'rail'];
+  const KIND_NAMES = { http: 'HTTP', oidc: 'OIDC', opa: 'OPA decision call', bundle: 'OPA bundle poll', jdbc: 'JDBC', cmd: 'Kafka · requests.manifest', evt: 'Kafka · response.manifest', other: 'Kafka · existing topic' };
+
+  // Map a sequence step onto the components it touches, as a path of node ids.
+  function pathFor(s) {
+    if (s.kind === 'note') return [];
+    const N = { client: 'developer', approver: 'approver', governance: 'governance', opa: 'opa', orchestrator: 'orchestrator', processor: 'processor' };
+    if (s.from === s.to) {
+      if (s.from === 'governance') return ['governance', 'postgres'];
+      if (s.from === 'orchestrator') return ['orchestrator', 't-repo'];
+      return [N[s.from]];
+    }
+    if (s.kind === 'other') return [N[s.from], s.label.startsWith('teams.changes') ? 't-changes' : 't-status', N[s.to]];
+    const topic = s.kind === 'cmd' ? 't-requests' : 't-response';
+    return [s.from === 'kafka' ? topic : N[s.from], s.to === 'kafka' ? topic : N[s.to]];
+  }
+  function linkBetween(a, b) {
+    for (const l of LINKS) {
+      if (l.from === a && l.to === b) return { link: l, pts: l.pts };
+      if (l.from === b && l.to === a) return { link: l, pts: [...l.pts].reverse() };
+    }
+    return null;
+  }
+  const centerOf = (id) => [NODES[id].x + NODES[id].w / 2, NODES[id].y + NODES[id].h / 2];
+
+  function labelPos(pts) {
+    let best = 0, bi = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const len = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (len > best) { best = len; bi = i; }
+    }
+    const a = pts[bi - 1], b = pts[bi];
+    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+    return a[1] === b[1] ? { x: mx, y: my - 6, anchor: 'middle' } : { x: mx + 6, y: my + 4, anchor: 'start' };
+  }
+
+  function animateAlong(svg, pts, cls, duration) {
+    if (pts.length < 2 || reduced.matches) return;
+    const segs = [0]; let total = 0;
+    for (let i = 1; i < pts.length; i++) { total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); segs.push(total); }
+    const g = el('g', { class: cls });
+    const tok = el('circle', { class: 'token', r: 7, cx: 0, cy: 0 });
+    g.appendChild(tok); svg.appendChild(g);
+    const frames = pts.map((p, i) => ({ transform: `translate(${p[0]}px, ${p[1]}px)`, offset: total ? segs[i] / total : i / (pts.length - 1) }));
+    const anim = tok.animate(frames, { duration, easing: 'ease-in-out', fill: 'forwards' });
+    anim.onfinish = () => g.remove();
+  }
+
+  function applyHover(id) {
+    const svg = $('csvg');
+    const connected = new Set();
+    if (id) for (const l of LINKS) if (l.from === id || l.to === id) { connected.add(l.id); connected.add(l.from); connected.add(l.to); }
+    svg.querySelectorAll('[data-id]').forEach((e) => {
+      const d = e.getAttribute('data-id');
+      e.classList.toggle('dim', !!id && d !== id && !connected.has(d));
+      e.classList.toggle('hl', !!id && d !== id && connected.has(d));
+    });
+  }
+
+  function select(type, id) {
+    state.selected = state.selected && state.selected.type === type && state.selected.id === id ? null : { type, id };
+    renderComponents(false);
+    renderDetails();
+  }
+
+  function renderComponents(animateLast) {
+    const svg = $('csvg');
+    svg.setAttribute('viewBox', `0 0 ${CW} ${CH}`);
+    while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
+    const defs = el('defs');
+    for (const k of LINK_KINDS) {
+      const m = el('marker', { id: 'carrow-' + k, class: 'lk-' + k, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '10', markerHeight: '10', markerUnits: 'userSpaceOnUse', orient: 'auto-start-reverse' });
+      m.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z' }));
+      defs.appendChild(m);
+    }
+    svg.appendChild(defs);
+
+    const steps = state.scenario.steps;
+    const visited = new Map(), used = new Set();
+    for (let i = 0; i <= state.index; i++) {
+      const p = pathFor(steps[i]);
+      p.forEach((id) => visited.set(id, i + 1));
+      for (let k = 0; k + 1 < p.length; k++) { const lb = linkBetween(p[k], p[k + 1]); if (lb) used.add(lb.link.id); }
+    }
+    const cur = state.index >= 0 ? pathFor(steps[state.index]) : [];
+    const curLinks = new Set();
+    const tokenPts = [];
+    for (let k = 0; k + 1 < cur.length; k++) {
+      const lb = linkBetween(cur[k], cur[k + 1]);
+      const pts = lb ? lb.pts : [centerOf(cur[k]), centerOf(cur[k + 1])];
+      if (lb) curLinks.add(lb.link.id);
+      pts.forEach((p, i) => { if (!(tokenPts.length && i === 0)) tokenPts.push(p); });
+    }
+
+    for (const z of ZONES) {
+      const g = el('g', { class: 'zone' });
+      g.appendChild(el('rect', { x: z.x, y: z.y, width: z.w, height: z.h, rx: 10 }));
+      g.appendChild(el('text', { x: z.x + 10, y: z.y + 18 }, z.title));
+      (z.note || []).forEach((line, i) => g.appendChild(el('text', { class: 'zone-note', x: z.x + 10, y: z.y + 40 + i * 14 }, line)));
+      svg.appendChild(g);
+    }
+
+    for (const l of LINKS) {
+      const st = curLinks.has(l.id) ? 'active' : used.has(l.id) ? 'used' : '';
+      const sel = state.selected && state.selected.type === 'link' && state.selected.id === l.id ? ' hl' : '';
+      const g = el('g', { class: 'clink lk-' + l.kind + ' ' + st + sel, 'data-id': l.id, tabindex: 0, role: 'button', 'aria-label': KIND_NAMES[l.kind] + ': ' + NODES[l.from].title + ' to ' + NODES[l.to].title });
+      const d = 'M ' + l.pts.map((p) => p.join(' ')).join(' L ');
+      const marker = `url(#carrow-${st || sel ? l.kind : 'rail'})`;
+      g.appendChild(el('path', { class: 'link-hit', d }));
+      const attrs = { class: 'link', d, 'marker-end': marker };
+      if (l.both) attrs['marker-start'] = marker;
+      g.appendChild(el('path', attrs));
+      if (l.label) { const lp = labelPos(l.pts); g.appendChild(el('text', { class: 'link-label', x: lp.x, y: lp.y, 'text-anchor': lp.anchor }, l.label)); }
+      g.addEventListener('click', () => select('link', l.id));
+      g.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); select('link', l.id); } });
+      svg.appendChild(g);
+    }
+
+    for (const [id, n] of Object.entries(NODES)) {
+      const cls = ['cnode', n.topic ? 'topic' : '', cur.includes(id) ? 'active' : visited.has(id) ? 'visited' : '',
+        state.selected && state.selected.type === 'node' && state.selected.id === id ? 'selected' : ''].join(' ');
+      const g = el('g', { class: cls, 'data-id': id, tabindex: 0, role: 'button', 'aria-label': n.kind + ': ' + n.title });
+      g.appendChild(el('rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 8 }));
+      g.appendChild(el('text', { class: 'n-title', x: n.x + 10, y: n.y + 18 }, n.title));
+      if (n.sub) g.appendChild(el('text', { class: 'n-sub', x: n.x + 10, y: n.y + 32 }, n.sub));
+      let y = n.y + 50;
+      for (const line of n.lines || []) {
+        const group = line.startsWith('#');
+        const mono = id === 'postgres' && !group;
+        g.appendChild(el('text', { class: group ? 'n-group' : mono ? 'n-mono' : 'n-item', x: n.x + 10, y }, group ? line.slice(1) : line));
+        y += group ? 13 : id === 'postgres' ? 12 : 16;
+      }
+      const badge = visited.get(id);
+      if (badge) {
+        g.appendChild(el('circle', { class: 'badge', cx: n.x + n.w - 2, cy: n.y + 2, r: 9 }));
+        g.appendChild(el('text', { class: 'badge-text', x: n.x + n.w - 2, y: n.y + 5.5, 'text-anchor': 'middle' }, String(badge)));
+      }
+      g.addEventListener('click', () => select('node', id));
+      g.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); select('node', id); } });
+      g.addEventListener('mouseenter', () => applyHover(id));
+      g.addEventListener('mouseleave', () => applyHover(null));
+      svg.appendChild(g);
+    }
+
+    if (animateLast && state.index >= 0) {
+      const s = steps[state.index];
+      if (tokenPts.length >= 2) animateAlong(svg, tokenPts, clsOf(s), (650 * Math.max(1, cur.length - 1)) / state.speed);
+    }
+  }
+
+  function renderDetails() {
+    const box = $('details'), log = $('log'), title = $('asideTitle');
+    const sel = state.view === 'components' ? state.selected : null;
+    if (!sel) { box.hidden = true; log.hidden = false; title.textContent = 'Steps'; return; }
+    box.replaceChildren();
+    const h = (tag, text, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+    if (sel.type === 'node') {
+      const n = NODES[sel.id];
+      title.textContent = n.kind;
+      box.append(h('h3', n.title), h('p', n.sub, 'sub'), h('p', n.desc));
+      const ul = h('ul'); (n.items || []).forEach((t) => ul.append(h('li', t))); box.append(ul);
+      const links = LINKS.filter((l) => l.from === sel.id || l.to === sel.id);
+      if (links.length) {
+        box.append(h('p', 'Connections'));
+        const cl = h('ul');
+        links.forEach((l) => { const li = h('li'); li.append(h('b', KIND_NAMES[l.kind] + ' '), document.createTextNode(l.from === sel.id ? '→ ' + NODES[l.to].title : '← ' + NODES[l.from].title)); cl.append(li); });
+        box.append(cl);
+      }
+      const code = h('p'); code.append(document.createTextNode('Code: '), h('code', n.code)); box.append(code);
+    } else {
+      const l = LINKS.find((x) => x.id === sel.id);
+      title.textContent = 'Connection';
+      box.append(h('h3', NODES[l.from].title + ' → ' + NODES[l.to].title + (l.both ? ' (both ways)' : '')), h('p', KIND_NAMES[l.kind] + (l.label ? ' · ' + l.label : ''), 'sub'), h('p', l.desc));
+    }
+    const back = h('button', 'Back to steps', 'back'); back.type = 'button';
+    back.addEventListener('click', () => { state.selected = null; renderComponents(false); renderDetails(); });
+    box.append(back);
+    box.hidden = false; log.hidden = true;
+    box.parentElement.scrollTop = 0;
+  }
+
+  function setView(view, rerender = true) {
+    state.view = view === 'components' ? 'components' : 'sequence';
+    state.selected = null;
+    const comp = state.view === 'components';
+    $('spanel').hidden = comp; $('cpanel').hidden = !comp;
+    document.querySelector('.layout').classList.toggle('cview', comp);
+    $('slegend').hidden = comp; $('clegend').hidden = !comp;
+    $('views').querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === state.view)));
+    if (rerender) render(false);
+  }
+  $('views').addEventListener('click', (e) => { const b = e.target.closest('button[data-view]'); if (b) setView(b.dataset.view); });
 
   // ---------- control ----------
   function setIndex(i, animate) {
     const max = state.scenario.steps.length - 1;
     state.index = Math.max(-1, Math.min(max, i));
+    state.selected = null;
     render(animate);
   }
   function next(animate = true) { if (state.index < state.scenario.steps.length - 1) setIndex(state.index + 1, animate); }
@@ -606,7 +971,7 @@
     else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prev(); }
     else if (e.key === 'Home') { e.preventDefault(); pause(); setIndex(-1, false); }
   });
-  window.addEventListener('resize', () => renderSvg(false));
+  window.addEventListener('resize', () => { if (state.view === 'sequence') renderSvg(false); });
 
   // theme toggle: auto -> dark -> light -> auto
   const themeBtn = $('theme');
@@ -623,12 +988,14 @@
   function bootFromHash() {
     const params = new URLSearchParams(location.hash.replace(/^#/, ''));
     const sc = SCENARIOS.find((s) => s.key === params.get('s')) || SCENARIOS[0];
+    const view = params.get('v') === 'components' ? 'components' : 'sequence';
     const startAt = Number(params.get('i'));
     const idx = Number.isFinite(startAt) && startAt > 0 ? Math.min(startAt, sc.steps.length) - 1 : -1;
-    if (sc === state.scenario && idx === state.index) return;
+    if (sc === state.scenario && idx === state.index && view === state.view) return;
     pause();
     state.scenario = sc;
     state.index = idx;
+    setView(view, false);
     renderTabs();
     render(false);
   }
