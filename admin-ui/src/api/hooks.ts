@@ -6,6 +6,7 @@ import {
   catalogApi,
   exceptionsApi,
   policyConfigApi,
+  releasesApi,
 } from './endpoints';
 import type {
   ApprovalConfiguration,
@@ -19,6 +20,7 @@ import type {
   PolicyBundleVersion,
   PolicyConfiguration,
   PolicyException,
+  PolicyReleaseActivation,
   RevisionDiagnostics,
   UploadBundleBody,
 } from './types';
@@ -31,6 +33,7 @@ export const queryKeys = {
   bundles: ['policy-bundles'] as const,
   bundle: (id: string) => ['policy-bundles', id] as const,
   diagnostics: ['policy-bundles', 'diagnostics'] as const,
+  release: ['policy-releases', 'current'] as const,
   approvalConfigs: ['approval-configurations'] as const,
   audit: (q: AuditQuery) => ['audit', q] as const,
   deadLetters: ['dead-letters'] as const,
@@ -111,15 +114,32 @@ export function useActivateBundle() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => bundlesApi.activate(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['policy-bundles'] }),
+    onSuccess: () => invalidatePolicySet(qc),
   });
 }
 export function useRollbackBundle() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => bundlesApi.rollback(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['policy-bundles'] }),
+    mutationFn: (bundle: string) => bundlesApi.rollback(bundle),
+    onSuccess: () => invalidatePolicySet(qc),
   });
+}
+
+// ---- policy release (the set of ACTIVE bundle versions)
+export function useReleaseStatus(opts?: Opts<RevisionDiagnostics>) {
+  return useQuery({ queryKey: queryKeys.release, queryFn: releasesApi.current, ...opts });
+}
+export function useActivateRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (versionIds: string[]): Promise<PolicyReleaseActivation> => releasesApi.activate(versionIds),
+    onSuccess: () => invalidatePolicySet(qc),
+  });
+}
+function invalidatePolicySet(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ['policy-bundles'] });
+  void qc.invalidateQueries({ queryKey: ['policy-releases'] });
+  void qc.invalidateQueries({ queryKey: queryKeys.catalog });
 }
 
 // ---- approval configuration

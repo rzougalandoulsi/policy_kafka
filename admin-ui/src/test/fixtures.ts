@@ -135,52 +135,71 @@ export const exceptions: PolicyException[] = [
   },
 ];
 
-export const bundles: PolicyBundleVersion[] = [
-  {
-    id: 'bundle-1',
-    revision: 'v1',
-    sha256: 'a'.repeat(64),
-    manifest: { revision: 'v1', roots: ['governance'] },
-    testReport: { passed: 40, names: [] },
-    status: 'RETIRED',
-    comment: 'first',
+function version(
+  n: number,
+  bundleName: string,
+  revision: string,
+  status: PolicyBundleVersion['status'],
+  extra: Partial<PolicyBundleVersion> = {},
+): PolicyBundleVersion {
+  return {
+    id: `bundle-${n}`,
+    bundleName,
+    revision,
+    sha256: String.fromCharCode(96 + n).repeat(64),
+    manifest: { revision, roots: [`governance/${bundleName}`], rego_version: 1 },
+    testReport: { passed: 53, names: [] },
+    status,
+    comment: null,
     uploadedBy: 'admin-1',
+    uploadedAt: '2026-10-20T00:00:00Z',
+    activatedAt: status === 'UPLOADED' ? null : '2026-10-20T00:00:00Z',
+    retiredAt: null,
+    failureReason: null,
+    ...extra,
+  };
+}
+
+/** Core has a history (retired, active, failed); naming has a newer upload waiting; the rest are simply active. */
+export const bundles: PolicyBundleVersion[] = [
+  version(1, 'core', 'core-v1', 'RETIRED', {
+    comment: 'first',
+    testReport: { passed: 40, names: [] },
     uploadedAt: '2026-10-01T00:00:00Z',
     activatedAt: '2026-10-01T00:00:00Z',
     retiredAt: '2026-10-20T00:00:00Z',
-    failureReason: null,
-  },
-  {
-    id: 'bundle-2',
-    revision: 'v2',
-    sha256: 'b'.repeat(64),
-    manifest: { revision: 'v2', roots: ['governance'] },
-    testReport: { passed: 46, names: [] },
-    status: 'ACTIVE',
-    comment: 'catalogue added',
-    uploadedBy: 'admin-1',
-    uploadedAt: '2026-10-20T00:00:00Z',
-    activatedAt: '2026-10-20T00:00:00Z',
-    retiredAt: null,
-    failureReason: null,
-  },
-  {
-    id: 'bundle-3',
-    revision: 'v3',
-    sha256: 'c'.repeat(64),
-    manifest: { revision: 'v3', roots: ['governance'] },
-    testReport: { passed: 47, names: [] },
-    status: 'FAILED',
+  }),
+  version(2, 'core', 'core-v2', 'ACTIVE', { comment: 'catalogue added' }),
+  version(3, 'core', 'core-v3', 'FAILED', {
     comment: 'broken',
-    uploadedBy: 'admin-1',
     uploadedAt: '2026-10-25T00:00:00Z',
     activatedAt: '2026-10-25T00:00:00Z',
-    retiredAt: null,
-    failureReason: 'OPA did not load revision; OPA reports v2',
-  },
+    failureReason: 'OPA did not load revision; OPA reports core-v2',
+  }),
+  version(4, 'manifests', 'manifests-v2', 'ACTIVE'),
+  version(5, 'naming', 'naming-v2', 'ACTIVE'),
+  version(6, 'quotas', 'quotas-v2', 'ACTIVE'),
+  version(7, 'resources', 'resources-v2', 'ACTIVE'),
+  version(8, 'changes', 'changes-v2', 'ACTIVE'),
+  version(9, 'naming', 'naming-v3', 'UPLOADED', {
+    comment: 'multi-prefix',
+    uploadedAt: '2026-10-26T00:00:00Z',
+  }),
 ];
 
-export const diagnostics: RevisionDiagnostics = { activeRevision: 'v2', opaRevision: 'v2', match: true };
+export const RELEASE_ID = 'rel-2f9c0a1b3d4e';
+
+export const diagnostics: RevisionDiagnostics = {
+  releaseId: RELEASE_ID,
+  match: true,
+  ready: true,
+  bundles: Object.fromEntries(
+    ['core', 'manifests', 'naming', 'quotas', 'resources', 'changes'].map((n) => [
+      n,
+      { expected: `${n}-v2`, loaded: `${n}-v2`, match: true },
+    ]),
+  ),
+};
 
 export const approvalConfigs: ApprovalConfiguration[] = [
   {
@@ -235,6 +254,7 @@ export const deadLetters: DeadLetter[] = [];
 export const catalog: CatalogPolicy[] = [
   {
     policyId: 'TOPIC_NAME_PATTERN',
+    bundle: 'naming',
     kind: 'VIOLATION',
     section: 'naming',
     severity: 'DENY',
@@ -245,6 +265,7 @@ export const catalog: CatalogPolicy[] = [
   },
   {
     policyId: 'TEAM_PREFIX_REQUIRED',
+    bundle: 'naming',
     kind: 'VIOLATION',
     section: 'naming',
     severity: 'DENY',

@@ -9,39 +9,44 @@ import {
   nextState,
   POLL_INTERVAL_MS,
   type ActivationState,
+  type ActivationTarget,
 } from './activation';
 
 const TONE = { waiting: 'info', adopted: 'ok', mismatch: 'danger', 'rolled-back': 'danger' } as const;
 
-/** Polls diagnostics + bundle list every 3 s for up to 90 s after an activation or rollback. */
+/** Polls diagnostics + bundle list every 3 s for up to 90 s after an activation or rollback of one bundle. */
 export function ActivationWatcher({
-  targetRevision,
+  target,
   onDismiss,
 }: {
-  targetRevision: string;
+  target: ActivationTarget;
   onDismiss: () => void;
 }) {
-  const [state, setState] = useState<ActivationState>(() => initialState(targetRevision));
+  const [state, setState] = useState<ActivationState>(() => initialState(target));
   const startedAt = useRef(Date.now());
   const done = isTerminal(state.phase);
   const diagnostics = useDiagnostics({ refetchInterval: done ? false : POLL_INTERVAL_MS });
   const bundles = useBundles({ refetchInterval: done ? false : POLL_INTERVAL_MS });
+  const { bundleName, revision } = target;
 
   useEffect(() => {
     startedAt.current = Date.now();
-    setState(initialState(targetRevision));
-  }, [targetRevision]);
+    setState(initialState({ bundleName, revision }));
+  }, [bundleName, revision]);
 
   useEffect(() => {
     if (done) return;
     const tick = () =>
       setState((prev) =>
-        nextState(prev, diagnostics.data, bundles.data, Date.now() - startedAt.current, targetRevision),
+        nextState(prev, diagnostics.data, bundles.data, Date.now() - startedAt.current, {
+          bundleName,
+          revision,
+        }),
       );
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [diagnostics.data, bundles.data, done, targetRevision]);
+  }, [diagnostics.data, bundles.data, done, bundleName, revision]);
 
   return (
     <div data-testid="activation-watcher">

@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '@/test/server';
 import { renderApp } from '@/test/render';
 import { ADMIN_TOKEN, bundles } from '@/test/fixtures';
-import { UploadBundleDialog, validateInspection } from './UploadBundleDialog';
+import { UploadBundleDialog, bundleNameOf, validateInspection } from './UploadBundleDialog';
 
 function tarFile(name: string, content: string): Uint8Array[] {
   const enc = new TextEncoder();
@@ -30,8 +30,12 @@ function tarGz(files: Array<[string, string]>): Uint8Array {
 }
 
 const GOOD_BUNDLE = tarGz([
-  ['.manifest', '{"revision":"r42","roots":["governance"]}'],
-  ['governance/decision.rego', 'package governance'],
+  ['.manifest', '{"revision":"core-r42","roots":["governance/core"]}'],
+  ['governance/core/core.rego', 'package governance.core'],
+]);
+const NAMING_BUNDLE = tarGz([
+  ['.manifest', '{"revision":"naming-r42","roots":["governance/naming"]}'],
+  ['governance/naming/naming.rego', 'package governance.naming'],
 ]);
 const GOOD_REPORT = JSON.stringify([
   { package: 'data.governance.a', name: 'test_one' },
@@ -77,11 +81,14 @@ describe('UploadBundleDialog', () => {
     const onOpenChange = vi.fn();
     renderApp(<UploadBundleDialog open onOpenChange={onOpenChange} />, { token: ADMIN_TOKEN });
     await user.upload(
-      screen.getByLabelText(/Bundle \(tar.gz\)/),
-      file('governance-bundle.tar.gz', GOOD_BUNDLE, 'application/gzip'),
+      screen.getByLabelText(/Bundles \(tar.gz\)/),
+      file('core-bundle.tar.gz', GOOD_BUNDLE, 'application/gzip'),
     );
-    expect(await screen.findByText(/Revision/)).toHaveTextContent('r42');
-    expect(screen.getByText(/1 rego file/)).toBeInTheDocument();
+    const items = await screen.findByTestId('bundle-items');
+    expect(items).toHaveTextContent('core');
+    expect(items).toHaveTextContent('core-r42');
+    expect(items).toHaveTextContent('root governance/core');
+    expect(items).toHaveTextContent('1 rego file');
     await user.upload(
       screen.getByLabelText(/Test report/),
       file('test-report.json', GOOD_REPORT, 'application/json'),
@@ -100,10 +107,63 @@ describe('UploadBundleDialog', () => {
     const user = userEvent.setup({ applyAccept: false });
     renderApp(<UploadBundleDialog open onOpenChange={() => {}} />, { token: ADMIN_TOKEN });
     await user.upload(
-      screen.getByLabelText(/Bundle \(tar.gz\)/),
+      screen.getByLabelText(/Bundles \(tar.gz\)/),
       file('x.tar.gz', 'definitely not gzip', 'application/gzip'),
     );
     expect(await screen.findByText(/Not a valid gzip tar archive/)).toBeInTheDocument();
+  });
+
+  it('uploads several bundles sequentially with one shared report and offers release activation only for a full set', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const uploaded: string[] = [];
+    server.use(
+      http.post('/api/v1/admin/policy-bundles', async ({ request }) => {
+        const body = (await request.json()) as { bundleBase64: string; testReportJson: string };
+        const name = atob(body.bundleBase64).length === GOOD_BUNDLE.length ? 'core' : 'naming';
+        uploaded.push(name + ':' + body.testReportJson.length);
+        return HttpResponse.json({
+          ...bundles[1],
+          id: `bundle-new-${name}`,
+          bundleName: name,
+          revision: `${name}-r42`,
+          status: 'UPLOADED',
+        });
+      }),
+    );
+    const onOpenChange = vi.fn();
+    renderApp(<UploadBundleDialog open onOpenChange={onOpenChange} />, { token: ADMIN_TOKEN });
+    await user.upload(screen.getByLabelText(/Bundles \(tar.gz\)/), [
+      file('core-bundle.tar.gz', GOOD_BUNDLE, 'application/gzip'),
+      file('naming-bundle.tar.gz', NAMING_BUNDLE, 'application/gzip'),
+    ]);
+    const items = await screen.findByTestId('bundle-items');
+    expect(items).toHaveTextContent('core-r42');
+    expect(items).toHaveTextContent('naming-r42');
+    expect(screen.getByText(/2 bundles selected/)).toHaveTextContent(
+      'manifests, quotas, resources, changes missing',
+    );
+    await user.upload(
+      screen.getByLabelText(/Test report/),
+      file('test-report.json', GOOD_REPORT, 'application/json'),
+    );
+    await screen.findByText('3 tests, all passing.');
+    expect(screen.getByRole('button', { name: 'Upload and activate release' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await waitFor(() =>
+      expect(uploaded).toEqual([`core:${GOOD_REPORT.length}`, `naming:${GOOD_REPORT.length}`]),
+    );
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it('rejects two files for the same bundle', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    renderApp(<UploadBundleDialog open onOpenChange={() => {}} />, { token: ADMIN_TOKEN });
+    await user.upload(screen.getByLabelText(/Bundles \(tar.gz\)/), [
+      file('a.tar.gz', GOOD_BUNDLE, 'application/gzip'),
+      file('b.tar.gz', GOOD_BUNDLE, 'application/gzip'),
+    ]);
+    expect(await screen.findAllByText(/Two files declare bundle core/)).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
   });
 
   it('mirrors the server-side inspection rules', () => {
@@ -117,15 +177,23 @@ describe('UploadBundleDialog', () => {
       validateInspection({
         manifest: { revision: 'x' },
         revision: 'x',
-        roots: ['other'],
+        roots: ['governance'],
         regoFiles: ['a.rego'],
       }),
-    ).toMatch(/must include "governance"/);
+    ).toMatch(/exactly one root governance\/<bundle>/);
     expect(
       validateInspection({
         manifest: { revision: 'x' },
         revision: 'x',
-        roots: ['governance'],
+        roots: ['governance/core', 'governance/naming'],
+        regoFiles: ['a.rego'],
+      }),
+    ).toMatch(/exactly one root/);
+    expect(
+      validateInspection({
+        manifest: { revision: 'x' },
+        revision: 'x',
+        roots: ['governance/core'],
         regoFiles: [],
       }),
     ).toMatch(/no \.rego/);
@@ -133,9 +201,12 @@ describe('UploadBundleDialog', () => {
       validateInspection({
         manifest: { revision: 'x' },
         revision: 'x',
-        roots: ['governance'],
+        roots: ['governance/quotas'],
         regoFiles: ['a.rego'],
       }),
     ).toBeNull();
+    expect(bundleNameOf(['governance/changes'])).toBe('changes');
+    expect(bundleNameOf(['governance/other'])).toBeNull();
+    expect(bundleNameOf(['governance'])).toBeNull();
   });
 });

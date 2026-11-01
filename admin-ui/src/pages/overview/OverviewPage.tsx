@@ -116,17 +116,22 @@ export function OverviewPage() {
         <HealthCard title="Policy bundle" to="/policy-bundles" query={diagnostics}>
           {diagnostics.data && (
             <>
-              <Row k="Active revision" v={<code>{diagnostics.data.activeRevision ?? 'none'}</code>} />
-              <Row k="OPA reports" v={<code>{diagnostics.data.opaRevision ?? 'nothing'}</code>} />
+              <Row k="Release" v={<code>{diagnostics.data.releaseId ?? 'none'}</code>} />
+              <Row
+                k="Bundles in sync"
+                v={`${Object.values(diagnostics.data.bundles).filter((b) => b.match).length} / ${
+                  Object.keys(diagnostics.data.bundles).length
+                }`}
+              />
               <Row
                 k="Status"
                 v={
-                  !diagnostics.data.activeRevision ? (
-                    <Badge tone="warn">no bundle active</Badge>
-                  ) : diagnostics.data.match ? (
+                  !diagnostics.data.releaseId ? (
+                    <Badge tone="warn">no release active</Badge>
+                  ) : diagnostics.data.match && diagnostics.data.ready ? (
                     <Badge tone="ok">in sync</Badge>
                   ) : (
-                    <Badge tone="danger">mismatch</Badge>
+                    <Badge tone="danger">{diagnostics.data.match ? 'not ready' : 'mismatch'}</Badge>
                   )
                 }
               />

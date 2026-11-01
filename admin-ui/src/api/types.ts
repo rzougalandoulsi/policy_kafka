@@ -112,9 +112,14 @@ export interface CreatePolicyConfigurationBody {
   comment?: string | null;
 }
 
-/** domain/policy/PolicyBundleVersion.java */
+/** The six bundle roots (governance/<name>); GovernanceProperties.Opa.bundles, in display order. */
+export const BUNDLE_NAMES = ['core', 'manifests', 'naming', 'quotas', 'resources', 'changes'] as const;
+export type BundleName = (typeof BUNDLE_NAMES)[number];
+
+/** domain/policy/PolicyBundleVersion.java: one version of one bundle; exactly one ACTIVE per bundle name. */
 export interface PolicyBundleVersion {
   id: string;
+  bundleName: string;
   revision: string;
   sha256: string;
   manifest: Record<string, unknown>;
@@ -135,11 +140,32 @@ export interface UploadBundleBody {
   comment?: string | null;
 }
 
-/** PolicyBundleService.RevisionDiagnostics */
-export interface RevisionDiagnostics {
-  activeRevision: string | null;
-  opaRevision: string | null;
+/** PolicyBundleService.BundleDiagnostics: expected (ACTIVE) versus the revision OPA reports for one bundle. */
+export interface BundleDiagnostics {
+  expected: string | null;
+  loaded: string | null;
   match: boolean;
+}
+
+/** PolicyBundleService.RevisionDiagnostics: the policy release versus OPA, per bundle. */
+export interface RevisionDiagnostics {
+  releaseId: string | null;
+  /** true only when every required bundle runs exactly its ACTIVE revision */
+  match: boolean;
+  /** data.governance.core.ready: every bundle loaded with a compatible contract version */
+  ready: boolean;
+  bundles: Record<string, BundleDiagnostics>;
+}
+
+/** PolicyReleaseController.ActivateReleaseBody */
+export interface ActivateReleaseBody {
+  versionIds: string[];
+}
+
+/** domain/policy/PolicyRelease.java */
+export interface PolicyReleaseActivation {
+  id: string;
+  revisions: Record<string, string>;
 }
 
 /** domain/policy/ApprovalConfiguration.java */
@@ -200,9 +226,11 @@ export interface DeadLetter {
   resolvedAt: string | null;
 }
 
-/** policies/governance/catalog.rego via GET /api/v1/admin/policies */
+/** data.governance.core.policy_catalog via GET /api/v1/admin/policies */
 export interface CatalogPolicy {
   policyId: string;
+  /** bundle that declares the policy (core, naming, ...) */
+  bundle?: string;
   kind: 'VIOLATION' | 'APPROVAL';
   section: 'naming' | 'rbac' | 'limits' | 'destructive' | 'approvals';
   severity: 'HARD_DENY' | 'DENY' | 'REQUIRE_APPROVAL';

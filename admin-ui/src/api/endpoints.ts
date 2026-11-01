@@ -11,6 +11,7 @@ import type {
   PolicyBundleVersion,
   PolicyConfiguration,
   PolicyException,
+  PolicyReleaseActivation,
   RevisionDiagnostics,
   UploadBundleBody,
 } from './types';
@@ -54,7 +55,14 @@ export const bundlesApi = {
     apiFetch<PolicyBundleVersion>(`${ADMIN}/policy-bundles/${encodeURIComponent(id)}/activate`, {
       method: 'POST',
     }),
-  rollback: () => apiFetch<PolicyBundleVersion>(`${ADMIN}/policy-bundles/rollback`, { method: 'POST' }),
+  rollback: (bundle: string) =>
+    apiFetch<PolicyBundleVersion>(`${ADMIN}/policy-bundles/rollback`, { method: 'POST', query: { bundle } }),
+};
+
+export const releasesApi = {
+  current: () => apiFetch<RevisionDiagnostics>(`${ADMIN}/policy-releases/current`),
+  activate: (versionIds: string[]) =>
+    apiFetch<PolicyReleaseActivation>(`${ADMIN}/policy-releases`, { method: 'POST', body: { versionIds } }),
 };
 
 export const approvalConfigApi = {

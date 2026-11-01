@@ -147,6 +147,7 @@ export function CreateExceptionDrawer({
                     {policies.map((p) => (
                       <option key={p.policyId} value={p.policyId} disabled={!p.bypassable}>
                         {p.policyId}
+                        {p.bundle ? ` · ${p.bundle}` : ''}
                         {p.bypassable ? '' : ' (not bypassable)'}
                       </option>
                     ))}

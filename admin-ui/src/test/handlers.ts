@@ -82,9 +82,26 @@ export const handlers = [
   http.post(`${ADMIN}/policy-bundles`, () =>
     HttpResponse.json({ ...fx.bundles[1], id: 'bundle-new', revision: 'v4', status: 'UPLOADED' }),
   ),
-  http.post(`${ADMIN}/policy-bundles/rollback`, () =>
-    HttpResponse.json({ ...fx.bundles[0], status: 'ACTIVE' }),
-  ),
+  http.post(`${ADMIN}/policy-bundles/rollback`, ({ request }) => {
+    const bundle = new URL(request.url).searchParams.get('bundle');
+    const retired = fx.bundles.find((x) => x.bundleName === bundle && x.status === 'RETIRED');
+    return retired
+      ? HttpResponse.json({ ...retired, status: 'ACTIVE' })
+      : HttpResponse.json(apiError('BAD_REQUEST', `No retired version of bundle ${bundle}`), { status: 400 });
+  }),
+  http.get(`${ADMIN}/policy-releases/current`, () => HttpResponse.json(fx.diagnostics)),
+  http.post(`${ADMIN}/policy-releases`, async ({ request }) => {
+    const body = (await request.json()) as { versionIds: string[] };
+    const chosen = body.versionIds.map((id) => fx.bundles.find((x) => x.id === id)).filter((x) => !!x);
+    if (chosen.length !== 6)
+      return HttpResponse.json(apiError('BAD_REQUEST', 'A release needs one version per bundle'), {
+        status: 400,
+      });
+    return HttpResponse.json({
+      id: 'rel-new',
+      revisions: Object.fromEntries(chosen.map((v) => [v.bundleName, v.revision])),
+    });
+  }),
   http.post(`${ADMIN}/policy-bundles/:id/activate`, ({ params }) =>
     HttpResponse.json({ ...fx.bundles.find((x) => x.id === params.id), status: 'ACTIVE' }),
   ),
