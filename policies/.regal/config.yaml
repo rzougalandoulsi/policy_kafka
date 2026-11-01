@@ -1,0 +1,66 @@
+# Regal (REGAL_VERSION) configuration for governance-policies. Rego v1 only.
+#
+# The rules switched off below form the baseline recorded when the linter was introduced (Phase 3): the Rego they
+# flag predates Regal and was left untouched so that the extraction changed no policy behaviour. Each entry says
+# why; remove entries as the code is tidied, never add one without a reason.
+project:
+  rego-version: 1
+  roots:
+    - path: bundles
+    - path: tests
+rules:
+  idiomatic:
+    # bundles/<name>/*.rego declare governance.<name>[.*]; the bundle root (governance/<name>) is the namespace, not
+    # the directory tree, and scripts/check-roots.sh enforces that mapping.
+    directory-package-mismatch:
+      level: ignore
+    # Entrypoints are passed to `opa build -O1 -e ...` by scripts/build-release.sh per bundle, not annotated in Rego.
+    no-defined-entrypoint:
+      level: ignore
+    # core.rego builds `missing`, `incompatible`, `bundles` and `revisions` as comprehensions on purpose (one
+    # expression each, read by Governance); limits.rego's `limit` helper uses equality on purpose. Baseline.
+    prefer-set-or-object-rule:
+      level: ignore
+    equals-pattern-matching:
+      level: ignore
+  imports:
+    # `data.system.bundles` is provided by the OPA runtime (bundle plugin), not by any file Regal can see.
+    unresolved-reference:
+      except-paths:
+        - data.system.bundles
+    # Test packages import the package under test for readability (`core.decision` rather than
+    # `data.governance.core.decision`), which Regal reads as importing their own parent package.
+    pointless-import:
+      ignore:
+        files:
+          - "tests/*_test.rego"
+  performance:
+    # Baseline: rules that evaluate a configuration flag inside the iteration; semantics are intended and tested.
+    non-loop-expression:
+      level: ignore
+    repeated-computation:
+      level: ignore
+  style:
+    line-length:
+      level: ignore
+    file-length:
+      level: ignore
+    # `approvals` in package governance.changes.approval is the bundle contract name core reads dynamically.
+    rule-name-repeats-package:
+      level: ignore
+    # bundle_contract(ns) := v if { v := data.governance[ns].contract_version } stays undefined when the bundle is
+    # missing; that is the composition's readiness signal.
+    unconditional-assignment:
+      level: ignore
+    # Baseline (small refactors deferred to keep Phase 3 behaviour-neutral).
+    comprehension-term-assignment:
+      level: ignore
+    messy-rule:
+      level: ignore
+    pointless-reassignment:
+      level: ignore
+    # Shared fixture helpers reference the package-level `zero` defaults on purpose.
+    external-reference:
+      ignore:
+        files:
+          - "tests/*_test.rego"

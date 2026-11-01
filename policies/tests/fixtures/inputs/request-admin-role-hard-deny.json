@@ -1,0 +1,159 @@
+{
+  "actions": [],
+  "configuration": {
+    "approvals": {
+      "highImpactPartitionThreshold": 50,
+      "productionTopicDeletion": true,
+      "sensitiveEnvironments": [
+        "production"
+      ],
+      "sensitiveRoleAssignment": true
+    },
+    "destructive": {
+      "identityPoolDeleteAllowedEnvironments": [
+        "development"
+      ],
+      "rbacRevokeAllowedEnvironments": [
+        "development",
+        "staging"
+      ],
+      "topicDeleteAllowedEnvironments": [
+        "development",
+        "staging",
+        "production"
+      ]
+    },
+    "limits": {
+      "environmentOverrides": {
+        "development": {
+          "maxPartitionsPerTopic": 12
+        }
+      },
+      "maxPartitionsPerPlan": 100,
+      "maxPartitionsPerTopic": 64,
+      "maxRetentionMs": 2592000000,
+      "maxTopicsPerManifest": 3
+    },
+    "naming": {
+      "environmentRestrictions": {
+        "production": {
+          "forbiddenPatterns": [
+            "^[a-z0-9-]+\\.(tmp|test|scratch)(\\.|$)"
+          ]
+        }
+      },
+      "requireTeamPrefix": true,
+      "teamPrefixSeparator": ".",
+      "topicPattern": "^[a-z][a-z0-9]*([.-][a-z0-9]+)*$"
+    },
+    "rbac": {
+      "allowedRoles": [
+        "DeveloperRead",
+        "DeveloperWrite",
+        "DeveloperManage",
+        "ResourceOwner"
+      ],
+      "environmentRoles": {
+        "production": [
+          "DeveloperRead",
+          "DeveloperWrite",
+          "DeveloperManage"
+        ]
+      },
+      "forbiddenRoles": [
+        "CloudClusterAdmin",
+        "EnvironmentAdmin",
+        "OrganizationAdmin"
+      ],
+      "sensitiveRoles": [
+        "DeveloperManage",
+        "ResourceOwner"
+      ],
+      "teamRoles": {
+        "team-locked": [
+          "DeveloperRead"
+        ]
+      }
+    }
+  },
+  "contractVersion": "2.0",
+  "environment": "production",
+  "exceptions": [],
+  "manifest": {
+    "environment": "production",
+    "identityPools": [],
+    "rbac": [
+      {
+        "principal": "User:svc-orders",
+        "resource": "Topic:team-a.orders",
+        "role": "CloudClusterAdmin"
+      },
+      {
+        "principal": "User:svc-orders",
+        "resource": "Topic:team-a.orders",
+        "role": "ResourceOwner"
+      }
+    ],
+    "repositoryId": "repo-1",
+    "teamId": "team-a",
+    "topics": [
+      {
+        "config": {},
+        "name": "team-a.orders",
+        "partitions": 6,
+        "retentionMs": null
+      }
+    ]
+  },
+  "now": "2026-11-01T10:00:00Z",
+  "ownership": {
+    "resources": {}
+  },
+  "plan": {},
+  "principal": {
+    "id": "user-1",
+    "roles": []
+  },
+  "repository": {
+    "id": "repo-1",
+    "ownedByTeam": true
+  },
+  "request": {
+    "manifestDigest": "sha256:abababababababababababababababababababababababababababababababab",
+    "requestId": "req-hard-deny"
+  },
+  "stage": "REQUEST",
+  "team": {
+    "allowedRoles": [],
+    "authorizedPrefixes": [
+      "team-a."
+    ],
+    "configurationVersion": 0,
+    "environments": {},
+    "id": "team-a",
+    "quotas": {},
+    "source": "default"
+  },
+  "usage": {
+    "asOfStateVersions": {},
+    "byRepository": {},
+    "current": {
+      "identityPools": 0,
+      "rbacBindings": 0,
+      "topicPartitions": 0,
+      "topics": 0
+    },
+    "delta": {
+      "identityPools": 0,
+      "rbacBindings": 0,
+      "topicPartitions": 0,
+      "topics": 0
+    },
+    "reserved": {
+      "identityPools": 0,
+      "rbacBindings": 0,
+      "topicPartitions": 0,
+      "topics": 0
+    }
+  }
+}

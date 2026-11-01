@@ -1,0 +1,32 @@
+{
+  "appliedExceptions": [
+    "exc-42"
+  ],
+  "approvals": [],
+  "bundles": {
+    "changes": "2.0",
+    "manifests": "2.0",
+    "naming": "2.0",
+    "quotas": "2.0",
+    "resources": "2.0"
+  },
+  "contractVersion": "2.0",
+  "decision": "ALLOW",
+  "matchedPolicies": [
+    "AUTHORIZED_PREFIX_REQUIRED"
+  ],
+  "ready": true,
+  "violations": [
+    {
+      "bypassable": true,
+      "enforcement": "enforce",
+      "exceptionId": "exc-42",
+      "exempted": true,
+      "message": "topic 'other.events' must start with an authorised prefix of team 'team-a' (team-a.)",
+      "policyId": "AUTHORIZED_PREFIX_REQUIRED",
+      "resourceName": "other.events",
+      "resourceType": "TOPIC",
+      "severity": "DENY"
+    }
+  ]
+}

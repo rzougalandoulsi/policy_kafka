@@ -1,0 +1,30 @@
+# Artifactory stand-in for local runs of scripts/publish.sh (generic repository semantics only):
+#   - bearer token required on every request (STANDIN_TOKEN),
+#   - PUT creates a file, PUT on an existing file answers 409 ("deploy without overwrite"),
+#   - HEAD/GET serve what was uploaded, 404 otherwise,
+#   - PUT /api/storage/<repo>/<path>?properties=... answers 204 like the Artifactory properties API (nothing stored).
+server {
+    listen 8080;
+    client_max_body_size 64m;
+
+    location = /health { return 200 "ok\n"; }
+
+    location /artifactory/api/storage/ {
+        if ($http_authorization != "Bearer ${STANDIN_TOKEN}") { return 401; }
+        if ($request_method = PUT) { return 204; }
+        return 404;
+    }
+
+    location /artifactory/ {
+        if ($http_authorization != "Bearer ${STANDIN_TOKEN}") { return 401; }
+        alias /data/;
+        set $guard "";
+        if ($request_method = PUT) { set $guard "put"; }
+        if (-f $request_filename) { set $guard "${guard}-exists"; }
+        if ($guard = "put-exists") { return 409 "path already exists: this repository does not allow overwrite\n"; }
+        dav_methods PUT;
+        create_full_put_path on;
+        dav_access user:rw group:rw all:r;
+        autoindex off;
+    }
+}

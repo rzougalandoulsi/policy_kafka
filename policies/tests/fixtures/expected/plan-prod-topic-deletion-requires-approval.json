@@ -1,0 +1,26 @@
+{
+  "appliedExceptions": [],
+  "approvals": [
+    {
+      "enforcement": "enforce",
+      "message": "deleting topic 'team-a.legacy' in production requires approval",
+      "policyId": "PROD_TOPIC_DELETE_REQUIRES_APPROVAL",
+      "resourceName": "team-a.legacy",
+      "resourceType": "TOPIC"
+    }
+  ],
+  "bundles": {
+    "changes": "2.0",
+    "manifests": "2.0",
+    "naming": "2.0",
+    "quotas": "2.0",
+    "resources": "2.0"
+  },
+  "contractVersion": "2.0",
+  "decision": "REQUIRE_APPROVAL",
+  "matchedPolicies": [
+    "PROD_TOPIC_DELETE_REQUIRES_APPROVAL"
+  ],
+  "ready": true,
+  "violations": []
+}

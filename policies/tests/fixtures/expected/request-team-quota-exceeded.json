@@ -1,0 +1,30 @@
+{
+  "appliedExceptions": [],
+  "approvals": [],
+  "bundles": {
+    "changes": "2.0",
+    "manifests": "2.0",
+    "naming": "2.0",
+    "quotas": "2.0",
+    "resources": "2.0"
+  },
+  "contractVersion": "2.0",
+  "decision": "DENY",
+  "matchedPolicies": [
+    "TEAM_QUOTA_EXCEEDED"
+  ],
+  "ready": true,
+  "violations": [
+    {
+      "bypassable": true,
+      "enforcement": "enforce",
+      "exceptionId": null,
+      "exempted": false,
+      "message": "team 'team-a' would use 3 topics but its quota is 2 (2 confirmed, 0 reserved by other plans, 1 from this change)",
+      "policyId": "TEAM_QUOTA_EXCEEDED",
+      "resourceName": "topics",
+      "resourceType": "QUOTA",
+      "severity": "DENY"
+    }
+  ]
+}

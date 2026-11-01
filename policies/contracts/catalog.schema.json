@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://itland.com/governance/opa/catalog/2.0",
+  "title": "Governance policy catalogue entry, contract 2.0",
+  "description": "Shape of every entry of data.governance.core.policy_catalog (the concatenation of each bundle's catalog). Governance serves it through GET /api/v1/admin/policies and the admin console offers only bypassable policies in the exception form.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["policyId", "bundle", "kind", "section", "severity", "bypassable", "stages", "resourceType", "description"],
+    "properties": {
+      "policyId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+      "bundle": {"type": "string", "enum": ["core", "manifests", "naming", "quotas", "resources", "changes"]},
+      "kind": {"type": "string", "enum": ["VIOLATION", "APPROVAL"]},
+      "section": {"type": "string", "enum": ["naming", "rbac", "limits", "destructive", "approvals", "manifests"]},
+      "severity": {"type": "string", "enum": ["DENY", "HARD_DENY", "REQUIRE_APPROVAL"]},
+      "bypassable": {"type": "boolean"},
+      "stages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "enum": ["REQUEST", "ACTION_PLAN"]}},
+      "resourceType": {"type": "string", "minLength": 1},
+      "description": {"type": "string", "minLength": 1}
+    },
+    "allOf": [
+      {"if": {"properties": {"severity": {"const": "HARD_DENY"}}}, "then": {"properties": {"bypassable": {"const": false}}}},
+      {"if": {"properties": {"kind": {"const": "APPROVAL"}}}, "then": {"properties": {"bypassable": {"const": false}, "severity": {"const": "REQUIRE_APPROVAL"}}}},
+      {"if": {"properties": {"kind": {"const": "VIOLATION"}}}, "then": {"properties": {"severity": {"enum": ["DENY", "HARD_DENY"]}}}}
+    ]
+  }
+}

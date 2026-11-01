@@ -1,0 +1,5 @@
+# SHA-256 of the static OPA binaries for the version in OPA_VERSION (GitHub release assets of open-policy-agent/opa).
+# scripts/install-opa.sh refuses a binary whose digest is not listed here. Update both files together.
+791790254c598a942eb140959bcec9a47f844535a632fd01d11d870ba2a47047  opa_linux_amd64_static
+62f64100c5db155a7499c14668a5a453feb7d94221736e12c7d759c0f46fc585  opa_linux_arm64_static
+41af6de872b3cb1d17eb604779489c83dd9bf377737873f9866814501df6e2d1  opa_darwin_arm64_static

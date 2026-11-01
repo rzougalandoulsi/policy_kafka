@@ -1,0 +1,39 @@
+{
+  "appliedExceptions": [],
+  "approvals": [
+    {
+      "enforcement": "enforce",
+      "message": "plan creates 120 partitions (threshold 50) and requires approval",
+      "policyId": "HIGH_IMPACT_CHANGE_REQUIRES_APPROVAL",
+      "resourceName": "plan-big-plan",
+      "resourceType": "PLAN"
+    }
+  ],
+  "bundles": {
+    "changes": "2.0",
+    "manifests": "2.0",
+    "naming": "2.0",
+    "quotas": "2.0",
+    "resources": "2.0"
+  },
+  "contractVersion": "2.0",
+  "decision": "DENY",
+  "matchedPolicies": [
+    "HIGH_IMPACT_CHANGE_REQUIRES_APPROVAL",
+    "MAX_PARTITIONS_PER_PLAN"
+  ],
+  "ready": true,
+  "violations": [
+    {
+      "bypassable": true,
+      "enforcement": "enforce",
+      "exceptionId": null,
+      "exempted": false,
+      "message": "plan creates 120 partitions, maximum is 100",
+      "policyId": "MAX_PARTITIONS_PER_PLAN",
+      "resourceName": "plan-big-plan",
+      "resourceType": "PLAN",
+      "severity": "DENY"
+    }
+  ]
+}

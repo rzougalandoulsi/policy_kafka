@@ -1,0 +1,8 @@
+# gitleaks configuration for governance-policies: default rules; build output (dist/, signed artifacts carry JWTs) and
+# the private tooling virtualenv are excluded from directory scans. Git history scans in CI never see them (ignored).
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "build output and local tooling"
+paths = ['''(^|/)dist/''', '''(^|/)\.tools/''']

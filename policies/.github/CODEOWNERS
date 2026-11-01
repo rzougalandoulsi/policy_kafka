@@ -1,0 +1,14 @@
+# Code owners of governance-policies. Teams are [A] inputs: replace the placeholders with the GitHub teams of your
+# organisation before enabling "require review from code owners" on main. Patterns later in the file win.
+*                                   @ORG/governance-platform
+/bundles/core/                      @ORG/governance-platform
+/bundles/manifests/                 @ORG/governance-platform
+/bundles/naming/                    @ORG/governance-policy-authors
+/bundles/quotas/                    @ORG/governance-policy-authors @ORG/governance-platform
+/bundles/resources/                 @ORG/governance-policy-authors
+/bundles/changes/                   @ORG/governance-policy-authors @ORG/governance-platform
+/contracts/                         @ORG/governance-platform @ORG/governance-service
+/scripts/                           @ORG/governance-platform
+/.github/                           @ORG/governance-platform
+/OPA_VERSION                        @ORG/governance-platform
+/opa.sha256                         @ORG/governance-platform

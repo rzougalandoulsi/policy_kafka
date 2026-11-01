@@ -9,7 +9,7 @@ Three services around a Kafka backbone:
 | **Processor** (existing, not implemented here) | Executes actions against Confluent Cloud | stand-in: `processor-simulator/` |
 | **Admin UI** (new) | Browser console for team configuration, policy configuration (incl. shadow mode), Rego bundles and releases, scoped exceptions, approval rules, shadow findings and audit (OIDC login, roles from the token, API stays the enforcer) | `admin-ui/` |
 
-Supporting pieces: `contracts/` (shared Avro schemas and the OPA input/output JSON schema, contract 2.0), `policies/` (six Rego v1 bundles + tests), `deploy/` (Docker Compose with SASL/ACLs, OPA, mock OIDC), `docs/`.
+Supporting pieces: `contracts/` (shared Avro schemas and the OPA input/output JSON schema, contract 2.0), `policies/` (six Rego v1 bundles, tests, fixtures and the CI/publishing tooling of the future `governance-policies` repository, see `policies/README.md`), `deploy/` (Docker Compose with SASL/ACLs, OPA, mock OIDC), `docs/`.
 
 ## Flow
 
@@ -33,8 +33,9 @@ Exactly two topics carry the Governance↔Orchestrator protocol: `requests.manif
 
 ```bash
 mvn -q verify                 # unit tests + Testcontainers end-to-end test (Docker required)
-policies/test.sh              # Rego unit tests (OPA in Docker)
-policies/build.sh [revision]  # check + test + build the six bundles into policies/dist/ plus release.json
+policies/test.sh              # Rego unit tests (OPA pinned by policies/OPA_VERSION, Docker when no binary)
+policies/build.sh [revision]  # check + test + fixtures + build the six bundles into policies/dist/ plus release.json
+policies/scripts/validate.sh  # everything the policy repository's Workflow A runs (fmt, strict check, coverage, roots, schemas, Regal, gitleaks)
 cd admin-ui && pnpm install && pnpm lint && pnpm test && pnpm build   # admin console (Node 20+, pnpm)
 ```
 

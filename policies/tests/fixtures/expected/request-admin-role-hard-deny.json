@@ -1,0 +1,42 @@
+{
+  "appliedExceptions": [],
+  "approvals": [],
+  "bundles": {
+    "changes": "2.0",
+    "manifests": "2.0",
+    "naming": "2.0",
+    "quotas": "2.0",
+    "resources": "2.0"
+  },
+  "contractVersion": "2.0",
+  "decision": "DENY",
+  "matchedPolicies": [
+    "RBAC_ADMIN_ROLE_FORBIDDEN",
+    "RBAC_ENV_RESTRICTED"
+  ],
+  "ready": true,
+  "violations": [
+    {
+      "bypassable": false,
+      "enforcement": "enforce",
+      "exceptionId": null,
+      "exempted": false,
+      "message": "role 'CloudClusterAdmin' is an administrative role and can never be granted through manifests",
+      "policyId": "RBAC_ADMIN_ROLE_FORBIDDEN",
+      "resourceName": "User:svc-orders#Topic:team-a.orders#CloudClusterAdmin",
+      "resourceType": "RBAC",
+      "severity": "HARD_DENY"
+    },
+    {
+      "bypassable": true,
+      "enforcement": "enforce",
+      "exceptionId": null,
+      "exempted": false,
+      "message": "role 'ResourceOwner' is not permitted in environment 'production'",
+      "policyId": "RBAC_ENV_RESTRICTED",
+      "resourceName": "User:svc-orders#Topic:team-a.orders#ResourceOwner",
+      "resourceType": "RBAC",
+      "severity": "DENY"
+    }
+  ]
+}

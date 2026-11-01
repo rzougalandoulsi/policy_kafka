@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://itland.com/governance/opa/release-manifest/1.0",
+  "title": "Policy release manifest",
+  "description": "The tested set of bundle revisions that Governance verifies and that promotion moves between environments. releaseId = rel-<first 12 hex of sha256(sorted 'name=revision' joined by ',')>, computed identically by scripts/release-manifest.sh, scripts/build.sh and Governance's PolicyRelease.of. Candidates written by Workflow B carry url, gitSha and createdAt; the local build writes file instead of url.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["releaseId", "bundles"],
+  "properties": {
+    "releaseId": {"type": "string", "pattern": "^rel-[0-9a-f]{12}$"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "gitSha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+    "gitRef": {"type": "string"},
+    "contractVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "opaVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "source": {"type": "string", "enum": ["local", "candidate", "promotion"]},
+    "revision": {"type": "string", "description": "Local builds only: the single revision suffix shared by the six bundles."},
+    "previousReleaseId": {"type": ["string", "null"], "pattern": "^rel-[0-9a-f]{12}$"},
+    "bundles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["core", "manifests", "naming", "quotas", "resources", "changes"],
+      "patternProperties": {
+        "^(core|manifests|naming|quotas|resources|changes)$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["revision", "sha256"],
+          "properties": {
+            "revision": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "url": {"type": "string", "format": "uri"},
+            "file": {"type": "string"},
+            "contractVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+            "builtAt": {"type": "string", "format": "date-time"},
+            "gitSha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+            "signed": {"type": "boolean"}
+          }
+        }
+      }
+    }
+  }
+}

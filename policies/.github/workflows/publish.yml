@@ -1,0 +1,217 @@
+# Workflow B: builds, signs, smoke-tests and publishes immutable bundle artifacts to Artifactory on every push to main
+# that changes a bundle (or on demand for a chosen bundle list), and attaches a candidate release manifest to a
+# GitHub Release draft. Promotion to an environment is Workflow C (not this workflow).
+#
+# [A] inputs that live outside this repository (configure them on the repository, never commit values):
+#   Repository variables:  ARTIFACTORY_URL                    e.g. https://artifactory.example.com/artifactory
+#                          ARTIFACTORY_OPA_BUNDLES_REPOSITORY  generic repository key, e.g. opa-bundles
+#                          JFROG_PLATFORM_URL                  JFrog platform URL (ARTIFACTORY_URL without /artifactory)
+#                          JFROG_OIDC_PROVIDER_NAME            OIDC integration name configured in JFrog for this GitHub org
+#                          JFROG_OIDC_AUDIENCE                 audience of that integration (optional)
+#   Environment "artifactory-publish" secrets:
+#                          OPA_BUNDLE_SIGNING_KEY              PEM private key (RS256); custody per plan assumption 6
+#                          ARTIFACTORY_PUBLISH_TOKEN           fallback only: scoped, expiring token with deploy-without-
+#                                                              overwrite permission on the repository; unused when OIDC works
+name: publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bundles/**"
+      - "OPA_VERSION"
+      - "opa.sha256"
+  workflow_dispatch:
+    inputs:
+      bundles:
+        description: "Bundles to build: all, or a comma-separated list (core,manifests,naming,quotas,resources,changes)"
+        required: true
+        default: "all"
+      reason:
+        description: "Why this manual publish is needed (recorded in the release notes)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-main
+  cancel-in-progress: false
+
+env:
+  ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
+  ARTIFACTORY_REPOSITORY: ${{ vars.ARTIFACTORY_OPA_BUNDLES_REPOSITORY }}
+  SIGNING_KEY_ID: governance-policies
+  PYTHON_PINS: "jsonschema==4.26.0 rfc3339-validator==0.1.4"
+
+jobs:
+  publish:
+    name: build, sign, smoke, publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: artifactory-publish
+    permissions:
+      contents: write   # GitHub Release draft with the candidate manifest
+      id-token: write   # JFrog OIDC
+    outputs:
+      release-id: ${{ steps.manifest.outputs.release-id }}
+    steps:
+      - name: Check out (full history, changed bundles are computed against the previous candidate)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned OPA (checksum from opa.sha256)
+        run: |
+          scripts/install-opa.sh "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install JSON Schema validator
+        run: python3 -m pip install --user --disable-pip-version-check $PYTHON_PINS
+
+      - name: Check Artifactory configuration is present
+        run: |
+          test -n "$ARTIFACTORY_URL" || { echo "::error::repository variable ARTIFACTORY_URL is not set"; exit 1; }
+          test -n "$ARTIFACTORY_REPOSITORY" || { echo "::error::repository variable ARTIFACTORY_OPA_BUNDLES_REPOSITORY is not set"; exit 1; }
+
+      # OIDC first: a short-lived token minted for this run. The fallback below is only taken when no provider is
+      # configured; it uses a scoped, expiring environment secret and is reported in the job summary.
+      - name: Authenticate to Artifactory (JFrog OIDC)
+        id: jfrog
+        if: vars.JFROG_OIDC_PROVIDER_NAME != ''
+        uses: jfrog/setup-jfrog-cli@6ed45ef1a24199bd4c94d3fd55a7e8cb7e45985d # v5.3.2
+        env:
+          JF_URL: ${{ vars.JFROG_PLATFORM_URL }}
+        with:
+          oidc-provider-name: ${{ vars.JFROG_OIDC_PROVIDER_NAME }}
+          oidc-audience: ${{ vars.JFROG_OIDC_AUDIENCE }}
+
+      - name: Select the access token
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+          FALLBACK_TOKEN: ${{ secrets.ARTIFACTORY_PUBLISH_TOKEN }}
+        run: |
+          if [ -n "$OIDC_TOKEN" ]; then
+            echo "::add-mask::$OIDC_TOKEN"; echo "ARTIFACTORY_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"; echo "auth: JFrog OIDC" | tee -a "$GITHUB_STEP_SUMMARY"
+          elif [ -n "$FALLBACK_TOKEN" ]; then
+            echo "ARTIFACTORY_TOKEN=$FALLBACK_TOKEN" >> "$GITHUB_ENV"; echo "auth: scoped token (fallback, OIDC provider not configured)" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::neither JFROG_OIDC_PROVIDER_NAME nor ARTIFACTORY_PUBLISH_TOKEN is configured"; exit 1
+          fi
+
+      - name: Previous candidate manifest (latest under releases/candidates)
+        id: previous
+        run: |
+          mkdir -p dist/release
+          listing="$(curl -sS -H "Authorization: Bearer $ARTIFACTORY_TOKEN" \
+            "$ARTIFACTORY_URL/api/storage/$ARTIFACTORY_REPOSITORY/releases/candidates?list&deep=0&listFolders=0" || true)"
+          latest="$(python3 -c '
+          import json, sys
+          try:
+              files = json.loads(sys.argv[1]).get("files", [])
+          except Exception:
+              files = []
+          files = [f for f in files if f["uri"].endswith(".json")]
+          print(max(files, key=lambda f: f["lastModified"])["uri"].lstrip("/") if files else "")
+          ' "$listing")"
+          if [ -n "$latest" ]; then
+            curl -sSf -H "Authorization: Bearer $ARTIFACTORY_TOKEN" -o dist/release/previous.json \
+              "$ARTIFACTORY_URL/$ARTIFACTORY_REPOSITORY/releases/candidates/$latest"
+            echo "previous=dist/release/previous.json" >> "$GITHUB_OUTPUT"
+            echo "since=$(python3 -c 'import json; print(json.load(open("dist/release/previous.json"))["gitSha"])')" >> "$GITHUB_OUTPUT"
+            echo "previous candidate: $latest" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "no previous candidate: every bundle is built" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Changed bundles
+        id: changed
+        env:
+          REQUESTED: ${{ github.event.inputs.bundles }}
+          SINCE: ${{ steps.previous.outputs.since }}
+          HAS_PREVIOUS: ${{ steps.previous.outputs.previous }}
+        run: |
+          if [ -n "$REQUESTED" ]; then list="$(scripts/changed-bundles.sh --bundles "$REQUESTED")"
+          elif [ -z "$HAS_PREVIOUS" ]; then list="$(scripts/changed-bundles.sh --all)"
+          else list="$(scripts/changed-bundles.sh --since "$SINCE")"; fi
+          echo "bundles=$(echo $list | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          { echo "### Bundles built in this run"; echo "$list" | sed 's/^/- /'; } | tee -a "$GITHUB_STEP_SUMMARY"
+          [ -n "$list" ] || echo "::notice::no bundle changed since the previous candidate; nothing to publish"
+
+      - name: Write the signing key (environment secret, file lives only in this job)
+        if: steps.changed.outputs.bundles != ''
+        env:
+          SIGNING_KEY: ${{ secrets.OPA_BUNDLE_SIGNING_KEY }}
+        run: |
+          test -n "$SIGNING_KEY" || { echo "::error::environment secret OPA_BUNDLE_SIGNING_KEY is not set"; exit 1; }
+          umask 077; mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/signing/key.pem"
+          openssl pkey -in "$RUNNER_TEMP/signing/key.pem" -pubout -out "$RUNNER_TEMP/signing/public.pem"
+          echo "signing key fingerprint: $(openssl pkey -pubin -in "$RUNNER_TEMP/signing/public.pem" -outform DER | sha256sum | cut -c1-16)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Build, sign, checksum (revision <bundle>-<yyyyMMdd>.<run_number>-<short sha>)
+        if: steps.changed.outputs.bundles != ''
+        run: |
+          suffix="$(date -u +%Y%m%d).${{ github.run_number }}-$(git rev-parse --short HEAD)"
+          echo "SUFFIX=$suffix" >> "$GITHUB_ENV"
+          scripts/build-release.sh --suffix "$suffix" --signing-key "$RUNNER_TEMP/signing/key.pem" \
+            --bundles "${{ steps.changed.outputs.bundles }}" --out dist/release \
+            --git-sha "${{ github.sha }}" --git-ref "${{ github.ref }}"
+
+      - name: Candidate release manifest
+        if: steps.changed.outputs.bundles != ''
+        id: manifest
+        run: |
+          prev="${{ steps.previous.outputs.previous }}"
+          scripts/release-manifest.sh --artifacts dist/release --out dist/release/candidate.json \
+            --base-url "$ARTIFACTORY_URL/$ARTIFACTORY_REPOSITORY" --source candidate \
+            --git-sha "${{ github.sha }}" --git-ref "${{ github.ref }}" ${prev:+--previous "$prev"}
+          scripts/check-schemas.sh --release dist/release/candidate.json
+          id="$(python3 -c 'import json; print(json.load(open("dist/release/candidate.json"))["releaseId"])')"
+          echo "release-id=$id" >> "$GITHUB_OUTPUT"
+          cp dist/release/candidate.json "dist/release/$id.json"
+
+      - name: Assemble the full set (unchanged revisions downloaded and checksummed)
+        if: steps.changed.outputs.bundles != ''
+        run: scripts/assemble-release.sh --manifest dist/release/candidate.json --artifacts dist/release
+
+      - name: Smoke (opa run --server with signature verification, fixtures, ready == true)
+        if: steps.changed.outputs.bundles != ''
+        run: tests/integration/smoke.sh --manifest dist/release/candidate.json --artifacts dist/release --verification-key "$RUNNER_TEMP/signing/public.pem" --keyid "$SIGNING_KEY_ID"
+
+      - name: Publish (HEAD pre-check, upload, properties, verify by download)
+        if: steps.changed.outputs.bundles != ''
+        run: scripts/publish.sh --manifest dist/release/candidate.json --artifacts dist/release | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: GitHub Release draft with the candidate manifest
+        if: steps.changed.outputs.bundles != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.manifest.outputs.release-id }}
+          REASON: ${{ github.event.inputs.reason }}
+        run: |
+          {
+            echo "Candidate policy release \`$RELEASE_ID\` (not promoted to any environment)."
+            echo
+            echo "| bundle | revision | sha256 |"; echo "|---|---|---|"
+            python3 -c 'import json; m=json.load(open("dist/release/candidate.json")); [print(f"| {n} | {b[\"revision\"]} | `{b[\"sha256\"][:16]}` |") for n,b in m["bundles"].items()]'
+            echo
+            echo "Artifacts: \`$ARTIFACTORY_URL/$ARTIFACTORY_REPOSITORY/releases/candidates/$RELEASE_ID.json\`"
+            [ -n "$REASON" ] && { echo; echo "Manual publish reason: $REASON"; }
+            echo; echo "Promote with Workflow C (promote.yml) by release id."
+          } > dist/release/notes.md
+          gh release create "release/$RELEASE_ID" --draft --title "Policy release candidate $RELEASE_ID" \
+            --notes-file dist/release/notes.md --target "${{ github.sha }}" \
+            "dist/release/$RELEASE_ID.json#candidate-release-manifest.json" dist/release/*.sha256 dist/release/*.signatures.json
+
+      - name: Upload build evidence
+        if: always() && steps.changed.outputs.bundles != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-${{ steps.manifest.outputs.release-id || github.run_number }}
+          path: |
+            dist/release/candidate.json
+            dist/release/*.sha256
+            dist/release/*.signatures.json
+          retention-days: 90

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Runs the Rego unit tests over all six bundles with verbose output. Requires Docker.
+# Runs the Rego unit tests over all six bundles with verbose output (OPA pinned by OPA_VERSION, Docker when no binary).
 set -euo pipefail
-cd "$(dirname "$0")"
-OPA_IMAGE="${OPA_IMAGE:-openpolicyagent/opa:1.22.0}"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 scripts/check-roots.sh
 scripts/check-lib-sync.sh
-docker run --rm -v "$PWD:/w" -w /w "$OPA_IMAGE" check --strict bundles tests
-docker run --rm -v "$PWD:/w" -w /w "$OPA_IMAGE" test bundles tests -v "$@"
+scripts/opa.sh check --strict bundles tests --ignore fixtures --ignore integration
+scripts/opa.sh test bundles tests --ignore fixtures --ignore integration -v "$@"

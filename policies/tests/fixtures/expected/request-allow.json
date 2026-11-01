@@ -1,0 +1,16 @@
+{
+  "appliedExceptions": [],
+  "approvals": [],
+  "bundles": {
+    "changes": "2.0",
+    "manifests": "2.0",
+    "naming": "2.0",
+    "quotas": "2.0",
+    "resources": "2.0"
+  },
+  "contractVersion": "2.0",
+  "decision": "ALLOW",
+  "matchedPolicies": [],
+  "ready": true,
+  "violations": []
+}
