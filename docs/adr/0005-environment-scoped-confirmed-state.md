@@ -1,0 +1,2 @@
+# ADR 0005: Confirmed state scoped per environment
+The original Orchestrator keyed confirmed state by `teamId|repoId` with no environment. Manifests now carry `environment`, so a production manifest must not be diffed against development state. Governance's freshness tracking is keyed by `(team, repository, environment)` and the real Orchestrator must key confirmed state by `teamId|repoId|environment` (legacy records without environment keep the old key); the stand-in does so. Discovered by the end-to-end test when a production manifest proposed deleting development topics.

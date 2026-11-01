@@ -1,0 +1,165 @@
+# Local platform: Kafka (KRaft, SASL/PLAIN + ACLs), Schema Registry, Postgres, OPA, mock OIDC,
+# Governance and the Orchestrator / Processor stand-ins.
+#   mvn -q package -DskipTests && policies/build.sh && docker compose -f deploy/docker-compose.yml up --build -d
+#   deploy/scripts/upload-bundle.sh && deploy/scripts/submit-manifest.sh docs/examples/manifest.json
+name: policy-kafka
+
+x-jaas: &jaas-governance 'org.apache.kafka.common.security.plain.PlainLoginModule required username="governance" password="${KAFKA_GOVERNANCE_PASSWORD}";'
+
+services:
+  kafka:
+    image: confluentinc/cp-kafka:8.0.0
+    hostname: kafka
+    ports: ["9094:9094"]
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: SASL_PLAINTEXT://0.0.0.0:9092,SASL_HOST://0.0.0.0:9094,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka:9092,SASL_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT,SASL_HOST:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: SASL_PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_LISTENER_NAME_SASL__PLAINTEXT_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin" password="${KAFKA_ADMIN_PASSWORD}"
+        user_admin="${KAFKA_ADMIN_PASSWORD}"
+        user_governance="${KAFKA_GOVERNANCE_PASSWORD}"
+        user_orchestrator="${KAFKA_ORCHESTRATOR_PASSWORD}"
+        user_processor="${KAFKA_PROCESSOR_PASSWORD}"
+        user_schemaregistry="${KAFKA_SR_PASSWORD}";
+      KAFKA_LISTENER_NAME_SASL__HOST_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin" password="${KAFKA_ADMIN_PASSWORD}"
+        user_admin="${KAFKA_ADMIN_PASSWORD}"
+        user_governance="${KAFKA_GOVERNANCE_PASSWORD}"
+        user_orchestrator="${KAFKA_ORCHESTRATOR_PASSWORD}"
+        user_processor="${KAFKA_PROCESSOR_PASSWORD}"
+        user_schemaregistry="${KAFKA_SR_PASSWORD}";
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      KAFKA_SUPER_USERS: User:admin;User:ANONYMOUS
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/jaas.conf
+    volumes:
+      - ./kafka/jaas.conf:/etc/kafka/jaas.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:9092 --command-config /dev/stdin <<< $$'security.protocol=SASL_PLAINTEXT\\nsasl.mechanism=PLAIN\\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"${KAFKA_ADMIN_PASSWORD}\";' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  kafka-init:
+    image: confluentinc/cp-kafka:8.0.0
+    depends_on:
+      kafka: { condition: service_healthy }
+    environment:
+      KAFKA_ADMIN_PASSWORD: ${KAFKA_ADMIN_PASSWORD}
+    volumes:
+      - ./kafka/acls.sh:/acls.sh:ro
+    entrypoint: ["bash", "/acls.sh"]
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.0.0
+    hostname: schema-registry
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+    ports: ["8081:8081"]
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: SASL_PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      SCHEMA_REGISTRY_KAFKASTORE_SASL_MECHANISM: PLAIN
+      SCHEMA_REGISTRY_KAFKASTORE_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="schemaregistry" password="${KAFKA_SR_PASSWORD}";'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8081/subjects >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: governance
+      POSTGRES_USER: governance
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: ["15432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U governance -d governance"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mock-oidc:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+    hostname: mock-oidc
+    ports: ["18089:8080"]
+    environment:
+      JSON_CONFIG_PATH: /config/config.json
+    volumes:
+      - ./oidc/config.json:/config/config.json:ro
+
+  opa:
+    image: openpolicyagent/opa:1.22.0
+    # No published ports: OPA is reachable only from governance on the compose network.
+    command: ["run", "--server", "--addr", "0.0.0.0:8181", "--config-file", "/config/config.yaml", "--log-level", "info"]
+    environment:
+      OPA_BUNDLE_TOKEN: ${OPA_BUNDLE_TOKEN}
+    volumes:
+      - ./opa/config.yaml:/config/config.yaml:ro
+
+  governance:
+    build: ../governance
+    depends_on:
+      postgres: { condition: service_healthy }
+      schema-registry: { condition: service_healthy }
+    ports: ["8080:8080"]
+    environment:
+      GOVERNANCE_DB_URL: jdbc:postgresql://postgres:5432/governance
+      GOVERNANCE_DB_USER: governance
+      GOVERNANCE_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_SASL_MECHANISM: PLAIN
+      KAFKA_SASL_JAAS_CONFIG: *jaas-governance
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      OPA_URL: http://opa:8181
+      OPA_BUNDLE_TOKEN: ${OPA_BUNDLE_TOKEN}
+      OAUTH2_ISSUER_URI: http://mock-oidc:8080/default
+      LOG_FORMAT: ecs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health/liveness >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Stand-in for the real Orchestrator (not provided here): speaks the documented two-topic contract, in-memory state.
+  orchestrator-simulator:
+    build: ../orchestrator-simulator
+    depends_on:
+      schema-registry: { condition: service_healthy }
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_SASL_MECHANISM: PLAIN
+      KAFKA_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="orchestrator" password="${KAFKA_ORCHESTRATOR_PASSWORD}";'
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+
+  processor-simulator:
+    build: ../processor-simulator
+    depends_on:
+      schema-registry: { condition: service_healthy }
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_SASL_MECHANISM: PLAIN
+      KAFKA_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="processor" password="${KAFKA_PROCESSOR_PASSWORD}";'
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081

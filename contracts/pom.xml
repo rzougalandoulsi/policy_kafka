@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.itland</groupId>
+    <artifactId>platform</artifactId>
+    <version>1.0</version>
+  </parent>
+
+  <artifactId>contracts</artifactId>
+  <name>Shared Avro contracts</name>
+  <description>Avro SpecificRecord contracts shared by Governance, Orchestrator and Processor.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.avro</groupId>
+      <artifactId>avro</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.avro</groupId>
+        <artifactId>avro-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>schema</goal>
+            </goals>
+            <configuration>
+              <sourceDirectory>${project.basedir}/src/main/avro</sourceDirectory>
+              <outputDirectory>${project.build.directory}/generated-sources/avro</outputDirectory>
+              <stringType>String</stringType>
+              <!-- Imports are compiled first and in this order; includes list the remaining roots. -->
+              <imports>
+                <import>${project.basedir}/src/main/avro/ManifestSpecs.avsc</import>
+                <import>${project.basedir}/src/main/avro/RepoDesired.avsc</import>
+                <import>${project.basedir}/src/main/avro/GovernanceTypes.avsc</import>
+                <import>${project.basedir}/src/main/avro/CommandPayloads.avsc</import>
+                <import>${project.basedir}/src/main/avro/EventPayloads.avsc</import>
+              </imports>
+              <includes>
+                <include>Action.avsc</include>
+                <include>BatchState.avsc</include>
+                <include>EndOfBatch.avsc</include>
+                <include>RepoConfirmed.avsc</include>
+                <include>ManifestCommand.avsc</include>
+                <include>ManifestEvent.avsc</include>
+              </includes>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,36 @@
+[
+  {"type": "enum", "name": "ManifestCommandType", "namespace": "com.itland.platform.avro",
+   "symbols": ["SUBMIT_MANIFEST", "AUTHORIZE_PLAN", "REJECT_PLAN"]},
+  {"type": "enum", "name": "ManifestEventType", "namespace": "com.itland.platform.avro",
+   "symbols": ["PLAN_PROPOSED", "MANIFEST_COMPLETED", "MANIFEST_FAILED", "MANIFEST_REJECTED"]},
+  {
+    "type": "record", "name": "PolicyViolation", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "policyId", "type": "string"},
+      {"name": "severity", "type": "string", "doc": "HARD_DENY | DENY | REQUIRE_APPROVAL"},
+      {"name": "message", "type": "string"},
+      {"name": "resourceType", "type": "string", "default": ""},
+      {"name": "resourceName", "type": "string", "default": ""}
+    ]
+  },
+  {
+    "type": "record", "name": "PlannedAction", "namespace": "com.itland.platform.avro",
+    "doc": "One immutable step of a proposed plan. actionType uses the Processor Action.type vocabulary.",
+    "fields": [
+      {"name": "actionId", "type": "string"},
+      {"name": "resourceType", "type": "string", "doc": "TOPIC | IDENTITY_POOL | RBAC"},
+      {"name": "resourceName", "type": "string"},
+      {"name": "actionType", "type": "string"},
+      {"name": "payload", "type": {"type": "map", "values": "string"}, "default": {}}
+    ]
+  },
+  {
+    "type": "record", "name": "ActionResult", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "resourceType", "type": "string"},
+      {"name": "resourceName", "type": "string"},
+      {"name": "success", "type": "boolean"},
+      {"name": "message", "type": "string", "default": ""}
+    ]
+  }
+]

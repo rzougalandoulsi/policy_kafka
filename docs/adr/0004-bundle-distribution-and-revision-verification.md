@@ -1,0 +1,2 @@
+# ADR 0004: Policy bundles built outside the JVM, served by Governance, verified by revision
+Rego is built and unit-tested with the OPA CLI (`policies/build.sh`), uploaded as a versioned artifact with its test report, and served to OPA from Governance's internal bundle endpoint. Every decision carries the bundle revision OPA reports (`provenance`), which must match the ACTIVE version; mismatches fail closed and an activation OPA does not adopt is rolled back automatically. No public API accepts arbitrary Rego.

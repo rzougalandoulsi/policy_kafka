@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "RepoConfirmed",
+  "namespace": "com.itland.orchestrator.avro",
+  "doc": "Confirmed (ground truth) state per teamId|repoId, compacted on teams.repo.manifest. stateVersion increments on every reconcile.",
+  "fields": [
+    {"name": "teamId", "type": "string"},
+    {"name": "repoId", "type": "string"},
+    {"name": "topics", "type": {"type": "array", "items": "string"}, "default": []},
+    {"name": "pools", "type": {"type": "array", "items": "string"}, "default": []},
+    {"name": "rbacsKey", "type": {"type": "array", "items": "string"}, "default": []},
+    {"name": "stateVersion", "type": "long", "default": 0},
+    {"name": "environment", "type": "string", "default": "", "doc": "Confirmed state is scoped per environment; empty for legacy records."}
+  ]
+}

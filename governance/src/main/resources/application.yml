@@ -1,0 +1,91 @@
+spring:
+  application:
+    name: governance
+  datasource:
+    url: ${GOVERNANCE_DB_URL:jdbc:postgresql://localhost:5432/governance}
+    username: ${GOVERNANCE_DB_USER:governance}
+    password: ${GOVERNANCE_DB_PASSWORD:governance}
+    hikari:
+      maximum-pool-size: ${GOVERNANCE_DB_POOL:16}
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH2_ISSUER_URI:http://localhost:8089/default}
+
+server:
+  port: ${GOVERNANCE_PORT:8080}
+
+governance:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+    requests-topic: requests.manifest
+    response-topic: response.manifest
+    consumer-group: ${GOVERNANCE_CONSUMER_GROUP:governance}
+    security-protocol: ${KAFKA_SECURITY_PROTOCOL:}
+    sasl-mechanism: ${KAFKA_SASL_MECHANISM:}
+    sasl-jaas-config: ${KAFKA_SASL_JAAS_CONFIG:}
+    schema-registry-auth: ${SCHEMA_REGISTRY_AUTH:}
+  opa:
+    url: ${OPA_URL:http://localhost:8181}
+    decision-path: /v1/data/governance/decision
+    bundle-name: governance
+    connect-timeout: 2s
+    response-timeout: 5s
+    max-retries: 2
+    retry-backoff: 200ms
+    verify-revision: true
+    bundle-token: ${OPA_BUNDLE_TOKEN:}
+    revision-check-interval: 15s
+  security:
+    issuer-uri: ${OAUTH2_ISSUER_URI:http://localhost:8089/default}
+    teams-claim: ${OAUTH2_TEAMS_CLAIM:teams}
+    environments-claim: ${OAUTH2_ENVIRONMENTS_CLAIM:environments}
+    roles-claim: ${OAUTH2_ROLES_CLAIM:roles}
+    admin-role: governance-admin
+    approver-role: governance-approver
+    auditor-role: governance-auditor
+  workflow:
+    authorization-validity: PT15M
+    default-approval-ttl: PT72H
+    max-evaluation-attempts: 3
+    evaluation-retry-backoff: 30s
+  outbox:
+    poll-interval: 500ms
+    batch-size: 100
+    max-attempts: 10
+    retry-backoff: 2s
+  inbox:
+    poll-records: 200
+    retry-poll-interval: 5s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+      group:
+        readiness:
+          include: db,opa,readinessState
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  structured:
+    format:
+      console: ${LOG_FORMAT:}
+  level:
+    org.apache.kafka: WARN
+    io.confluent: WARN

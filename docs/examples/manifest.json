@@ -1,0 +1,15 @@
+{
+  "teamId": "team-a",
+  "repositoryId": "orders-service",
+  "environment": "development",
+  "resources": {
+    "topics": [
+      {"name": "team-a.orders.events", "partitions": 12, "retentionMs": 604800000, "config": {"cleanup.policy": "delete"}},
+      {"name": "team-a.orders.audit", "partitions": 3, "retentionMs": 86400000}
+    ],
+    "rbac": [
+      {"principal": "service-account-123", "role": "DeveloperRead", "resource": "topic:team-a.orders.events"}
+    ],
+    "identityPools": []
+  }
+}

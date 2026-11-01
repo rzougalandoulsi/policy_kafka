@@ -1,0 +1,2 @@
+# ADR 0001: One modular Governance application, OPA as a separate container
+Governance is one Spring Boot (WebFlux) application with `api / application / domain / infrastructure / configuration` packages. OPA runs as its own container, evaluates policies only, never touches Kafka, and is reachable solely from Governance. Rationale: single deployable for the public entry point, clear boundary for policy logic, no new Kafka topics.

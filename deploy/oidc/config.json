@@ -1,0 +1,20 @@
+{
+  "interactiveLogin": false,
+  "httpServer": "NettyWrapper",
+  "tokenCallbacks": [
+    {
+      "issuerId": "default",
+      "tokenExpiry": 3600,
+      "requestMappings": [
+        {"requestParam": "client_id", "match": "dev-1",
+         "claims": {"sub": "dev-1", "teams": ["team-a"], "environments": ["development", "production"], "roles": []}},
+        {"requestParam": "client_id", "match": "approver-1",
+         "claims": {"sub": "approver-1", "teams": [], "environments": [], "roles": ["governance-approver"]}},
+        {"requestParam": "client_id", "match": "admin-1",
+         "claims": {"sub": "admin-1", "teams": [], "environments": [], "roles": ["governance-admin", "governance-auditor"]}},
+        {"requestParam": "client_id", "match": "outsider",
+         "claims": {"sub": "outsider", "teams": ["team-b"], "environments": ["development"], "roles": []}}
+      ]
+    }
+  ]
+}

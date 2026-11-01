@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "name": "Action",
+  "namespace": "com.itland.orchestrator.avro",
+  "doc": "Executable action sent to the Processor on teams.changes. Contract unchanged.",
+  "fields": [
+    {"name": "type", "type": "string", "doc": "TOPIC_CREATE | TOPIC_UPDATE | TOPIC_DELETE | IDENTITY_POOL_CREATE | IDENTITY_POOL_DELETE | RBAC_ASSIGN | RBAC_REVOKE"},
+    {"name": "payload", "type": {"type": "map", "values": "string"}, "default": {}}
+  ]
+}

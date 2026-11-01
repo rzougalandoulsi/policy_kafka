@@ -1,0 +1,17 @@
+# OPA pulls the ACTIVE policy bundle from Governance (internal endpoint, static bearer token).
+# OPA has no public exposure: only the governance service talks to it on the compose network.
+services:
+  governance:
+    url: http://governance:8080/internal/opa
+    credentials:
+      bearer:
+        token: ${OPA_BUNDLE_TOKEN}
+bundles:
+  governance:
+    service: governance
+    resource: bundles/governance
+    polling:
+      min_delay_seconds: 5
+      max_delay_seconds: 15
+decision_logs:
+  console: true

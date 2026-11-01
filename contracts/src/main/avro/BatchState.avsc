@@ -1,0 +1,31 @@
+[
+  {
+    "type": "record",
+    "name": "ProcStatus",
+    "namespace": "com.itland.orchestrator.avro",
+    "doc": "Per-action execution status emitted by the Processor on request.status. Contract unchanged.",
+    "fields": [
+      {"name": "correlationId", "type": "string"},
+      {"name": "teamId", "type": "string"},
+      {"name": "resourceType", "type": "string"},
+      {"name": "resourceName", "type": "string"},
+      {"name": "success", "type": "boolean"},
+      {"name": "payload", "type": {"type": "map", "values": "string"}, "default": {}}
+    ]
+  },
+  {
+    "type": "record",
+    "name": "BatchState",
+    "namespace": "com.itland.orchestrator.avro",
+    "doc": "Orchestrator-internal aggregation of Processor statuses per correlationId.",
+    "fields": [
+      {"name": "teamId", "type": "string"},
+      {"name": "repoId", "type": "string"},
+      {"name": "statuses", "type": {"type": "array", "items": "com.itland.orchestrator.avro.ProcStatus"}, "default": []},
+      {"name": "totalCount", "type": "int", "default": 0},
+      {"name": "requestId", "type": "string", "default": ""},
+      {"name": "planId", "type": "string", "default": ""},
+      {"name": "environment", "type": "string", "default": ""}
+    ]
+  }
+]

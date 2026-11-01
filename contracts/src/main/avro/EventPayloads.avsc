@@ -1,0 +1,30 @@
+[
+  {
+    "type": "record", "name": "PlanProposedPayload", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "actions", "type": {"type": "array", "items": "com.itland.platform.avro.PlannedAction"}, "default": []},
+      {"name": "manifestDigest", "type": "string"}
+    ]
+  },
+  {
+    "type": "record", "name": "ManifestCompletedPayload", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "results", "type": {"type": "array", "items": "com.itland.platform.avro.ActionResult"}, "default": []}
+    ]
+  },
+  {
+    "type": "record", "name": "ManifestFailedPayload", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "reasonCode", "type": "string"},
+      {"name": "message", "type": "string", "default": ""},
+      {"name": "results", "type": {"type": "array", "items": "com.itland.platform.avro.ActionResult"}, "default": []}
+    ]
+  },
+  {
+    "type": "record", "name": "ManifestRejectedPayload", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "reasonCode", "type": "string"},
+      {"name": "message", "type": "string", "default": ""}
+    ]
+  }
+]

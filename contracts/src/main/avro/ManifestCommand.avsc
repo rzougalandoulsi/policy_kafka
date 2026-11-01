@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "name": "ManifestCommand",
+  "namespace": "com.itland.platform.avro",
+  "doc": "Governance -> Orchestrator command on requests.manifest. Kafka key = teamId. Subject (RecordNameStrategy) = com.itland.platform.avro.ManifestCommand.",
+  "fields": [
+    {"name": "commandId", "type": "string"},
+    {"name": "commandType", "type": "com.itland.platform.avro.ManifestCommandType"},
+    {"name": "requestId", "type": "string"},
+    {"name": "teamId", "type": "string"},
+    {"name": "repositoryId", "type": "string"},
+    {"name": "environment", "type": "string"},
+    {"name": "planId", "type": ["null", "string"], "default": null},
+    {"name": "planDigest", "type": ["null", "string"], "default": null},
+    {"name": "decisionId", "type": ["null", "string"], "default": null},
+    {"name": "occurredAt", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "payload", "type": [
+      "com.itland.platform.avro.SubmitManifestPayload",
+      "com.itland.platform.avro.AuthorizePlanPayload",
+      "com.itland.platform.avro.RejectPlanPayload"
+    ]}
+  ]
+}

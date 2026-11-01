@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "RepoDesired",
+  "namespace": "com.itland.orchestrator.avro",
+  "doc": "Complete desired state owned by one repository. Extended with the fields ManifestDiffer already required; all additions have defaults.",
+  "fields": [
+    {"name": "teamId", "type": "string"},
+    {"name": "repoId", "type": "string"},
+    {"name": "environment", "type": "string", "default": ""},
+    {"name": "topics", "type": {"type": "array", "items": "com.itland.orchestrator.avro.TopicSpec"}, "default": []},
+    {"name": "identityPools", "type": {"type": "array", "items": "com.itland.orchestrator.avro.PoolSpec"}, "default": []},
+    {"name": "rbacs", "type": {"type": "array", "items": "com.itland.orchestrator.avro.RbacSpec"}, "default": [], "doc": "Standalone role bindings not attached to an identity pool."}
+  ]
+}

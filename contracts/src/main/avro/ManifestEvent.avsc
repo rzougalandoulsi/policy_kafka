@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "name": "ManifestEvent",
+  "namespace": "com.itland.platform.avro",
+  "doc": "Orchestrator -> Governance event on response.manifest. Kafka key = teamId. Subject (RecordNameStrategy) = com.itland.platform.avro.ManifestEvent.",
+  "fields": [
+    {"name": "eventId", "type": "string"},
+    {"name": "eventType", "type": "com.itland.platform.avro.ManifestEventType"},
+    {"name": "requestId", "type": "string"},
+    {"name": "teamId", "type": "string"},
+    {"name": "repositoryId", "type": "string"},
+    {"name": "environment", "type": "string"},
+    {"name": "planId", "type": ["null", "string"], "default": null},
+    {"name": "planDigest", "type": ["null", "string"], "default": null},
+    {"name": "decisionId", "type": ["null", "string"], "default": null},
+    {"name": "stateVersion", "type": ["null", "long"], "default": null},
+    {"name": "occurredAt", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "payload", "type": [
+      "com.itland.platform.avro.PlanProposedPayload",
+      "com.itland.platform.avro.ManifestCompletedPayload",
+      "com.itland.platform.avro.ManifestFailedPayload",
+      "com.itland.platform.avro.ManifestRejectedPayload"
+    ]}
+  ]
+}

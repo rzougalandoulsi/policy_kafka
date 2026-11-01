@@ -1,0 +1,23 @@
+[
+  {
+    "type": "record", "name": "SubmitManifestPayload", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "manifest", "type": "com.itland.orchestrator.avro.RepoDesired"},
+      {"name": "manifestDigest", "type": "string", "doc": "SHA-256 hex of the canonical manifest JSON"}
+    ]
+  },
+  {
+    "type": "record", "name": "AuthorizePlanPayload", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "stateVersion", "type": "long", "doc": "Confirmed-state version the plan was computed against"},
+      {"name": "authorizationExpiresAt", "type": {"type": "long", "logicalType": "timestamp-millis"}}
+    ]
+  },
+  {
+    "type": "record", "name": "RejectPlanPayload", "namespace": "com.itland.platform.avro",
+    "fields": [
+      {"name": "reasonCode", "type": "string"},
+      {"name": "violations", "type": {"type": "array", "items": "com.itland.platform.avro.PolicyViolation"}, "default": []}
+    ]
+  }
+]

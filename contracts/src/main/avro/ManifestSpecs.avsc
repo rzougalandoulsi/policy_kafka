@@ -1,0 +1,33 @@
+[
+  {
+    "type": "record",
+    "name": "TopicSpec",
+    "namespace": "com.itland.orchestrator.avro",
+    "fields": [
+      {"name": "name", "type": "string"},
+      {"name": "partitions", "type": ["null", "int"], "default": null},
+      {"name": "config", "type": {"type": "map", "values": "string"}, "default": {}}
+    ]
+  },
+  {
+    "type": "record",
+    "name": "RbacSpec",
+    "namespace": "com.itland.orchestrator.avro",
+    "doc": "Role binding. Key for confirmed state is principal#resource#role.",
+    "fields": [
+      {"name": "principal", "type": "string"},
+      {"name": "resource", "type": "string", "default": ""},
+      {"name": "role", "type": "string"}
+    ]
+  },
+  {
+    "type": "record",
+    "name": "PoolSpec",
+    "namespace": "com.itland.orchestrator.avro",
+    "fields": [
+      {"name": "name", "type": "string"},
+      {"name": "principals", "type": {"type": "array", "items": "string"}, "default": []},
+      {"name": "rbacs", "type": {"type": "array", "items": "com.itland.orchestrator.avro.RbacSpec"}, "default": []}
+    ]
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "EndOfBatch",
+  "namespace": "com.itland.orchestrator.avro",
+  "doc": "Batch marker produced by the Orchestrator on teams.changes (intendedFor=orchestrator). Governance correlation fields added with defaults.",
+  "fields": [
+    {"name": "type", "type": "string"},
+    {"name": "correlationId", "type": "string"},
+    {"name": "expectedCount", "type": "int"},
+    {"name": "teamId", "type": "string", "default": ""},
+    {"name": "repoId", "type": "string", "default": ""},
+    {"name": "requestId", "type": "string", "default": ""},
+    {"name": "planId", "type": "string", "default": ""},
+    {"name": "environment", "type": "string", "default": ""}
+  ]
+}
