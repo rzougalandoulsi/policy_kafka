@@ -31,6 +31,19 @@
   </dependencies>
 
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <!-- OPA input/output contract (contracts/opa/*.schema.json) ships in the jar under opa/ for the Governance schema test. -->
+      <resource>
+        <directory>opa</directory>
+        <targetPath>opa</targetPath>
+        <includes>
+          <include>*.schema.json</include>
+        </includes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.avro</groupId>

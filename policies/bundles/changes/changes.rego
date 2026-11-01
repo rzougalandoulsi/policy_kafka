@@ -9,7 +9,7 @@ violations := destructive.violations
 
 approvals := approval.approvals
 
-contract_version := "1.0"
+contract_version := "2.0"
 
 catalog := [
 	{"policyId": "TOPIC_DELETE_RESTRICTED", "bundle": "changes", "kind": "VIOLATION", "section": "destructive", "severity": "DENY", "bypassable": true, "stages": ["ACTION_PLAN"], "resourceType": "TOPIC", "description": "Topic deletion is only allowed in destructive.topicDeleteAllowedEnvironments."},

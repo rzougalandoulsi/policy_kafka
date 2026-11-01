@@ -26,6 +26,8 @@ import java.util.UUID;
 public class PolicyConfigurationService {
 
   static final Set<String> REQUIRED_SECTIONS = Set.of("naming", "rbac", "limits", "destructive", "approvals");
+  static final Set<String> ENFORCEMENT_MODES = Set.of("enforce", "shadow");
+  private static final java.util.regex.Pattern POLICY_ID = java.util.regex.Pattern.compile("^[A-Z][A-Z0-9_]{2,63}$");
 
   private final PolicyConfigurationRepository configurations;
   private final PolicyBundleRepository bundles;
@@ -98,6 +100,19 @@ public class PolicyConfigurationService {
       for (String k : List.of("maxTopicsPerManifest", "maxPartitionsPerTopic", "maxPartitionsPerPlan", "maxRetentionMs")) {
         if (!(l.get(k) instanceof Number n) || n.longValue() <= 0) {
           throw new IllegalArgumentException("limits." + k + " must be a positive number");
+        }
+      }
+    }
+    // Optional per-policy enforcement mode (shadow = recorded, never blocking); unknown values would fail open in Rego, so refuse them here.
+    Object enforcement = content.get("enforcement");
+    if (enforcement != null) {
+      if (!(enforcement instanceof Map<?, ?> e)) throw new IllegalArgumentException("enforcement must be an object of policyId -> enforce|shadow");
+      for (Map.Entry<?, ?> entry : e.entrySet()) {
+        if (!(entry.getKey() instanceof String id) || !POLICY_ID.matcher(id).matches()) {
+          throw new IllegalArgumentException("enforcement key '" + entry.getKey() + "' is not a policy id");
+        }
+        if (!(entry.getValue() instanceof String mode) || !ENFORCEMENT_MODES.contains(mode)) {
+          throw new IllegalArgumentException("enforcement." + id + " must be one of " + ENFORCEMENT_MODES);
         }
       }
     }

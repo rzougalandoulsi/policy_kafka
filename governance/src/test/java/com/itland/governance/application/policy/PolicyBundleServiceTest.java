@@ -28,9 +28,10 @@ class PolicyBundleServiceTest {
       new Json(JsonMapper.builder().build()), Clock.systemUTC(), mock(OpaClient.class), new GovernanceMetrics(new SimpleMeterRegistry()),
       mock(TransactionTemplate.class), new GovernanceProperties(null,
           new GovernanceProperties.Opa("http://opa", "/v1/data/governance/core/decision", "/v1/data/governance/core/policy_catalog", "/v1/data/governance/core/ready",
-            List.of("core", "manifests", "naming", "quotas", "resources", "changes"), Duration.ofSeconds(1), Duration.ofSeconds(1), 0, Duration.ofMillis(1), true, "t"),
+            List.of("core", "manifests", "naming", "quotas", "resources", "changes"), Duration.ofSeconds(1), Duration.ofSeconds(1), 0, Duration.ofMillis(1), true, "t", "2.0", List.of("1", "2")),
           null, new GovernanceProperties.Workflow(Duration.ofMinutes(15), Duration.ofHours(72), 3, Duration.ofSeconds(30)),
-          new GovernanceProperties.Outbox(Duration.ofMillis(500), 100, 10, Duration.ofSeconds(2)), new GovernanceProperties.Inbox(200, Duration.ofSeconds(5))));
+          new GovernanceProperties.Outbox(Duration.ofMillis(500), 100, 10, Duration.ofSeconds(2)), new GovernanceProperties.Inbox(200, Duration.ofSeconds(5)),
+          new GovernanceProperties.Usage(true)));
 
   static final Path BUNDLE = Path.of("..", "policies", "dist", "core-bundle.tar.gz");
   static final Path REPORT = Path.of("..", "policies", "dist", "test-report.json");

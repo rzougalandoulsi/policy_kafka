@@ -24,7 +24,14 @@ test_environment_restriction if {
 }
 
 test_team_role_restriction if {
-	inp := object.union(f.request("development", [], [binding("DeveloperWrite")]), {"team": {"id": "team-locked"}})
+	inp := f.with_team(f.request("development", [], [binding("DeveloperWrite")]), {"id": "team-locked"})
 	"RBAC_TEAM_ROLE_ALLOWED" in ids(rbac.violations) with input as inp
 	not "RBAC_TEAM_ROLE_ALLOWED" in ids(rbac.violations) with input as f.request("development", [], [binding("DeveloperWrite")])
+}
+
+test_team_configuration_allowed_roles_override_configuration if {
+	locked := f.with_team(f.request("development", [], [binding("DeveloperWrite")]), {"id": "team-locked", "allowedRoles": ["DeveloperWrite"]})
+	not "RBAC_TEAM_ROLE_ALLOWED" in ids(rbac.violations) with input as locked
+	restricted := f.with_team(f.request("development", [], [binding("DeveloperWrite")]), {"allowedRoles": ["DeveloperRead"]})
+	"RBAC_TEAM_ROLE_ALLOWED" in ids(rbac.violations) with input as restricted
 }

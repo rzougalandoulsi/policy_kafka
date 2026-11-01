@@ -10,14 +10,19 @@ violations contains h.violation("TOPIC_NAME_PATTERN", "DENY", msg, "TOPIC", t.na
 	msg := sprintf("topic '%s' does not match pattern %s", [t.name, h.config.naming.topicPattern])
 }
 
-# TEAM_PREFIX_REQUIRED: topics must be prefixed with the owning team id (bypassable).
-violations contains h.violation("TEAM_PREFIX_REQUIRED", "DENY", msg, "TOPIC", t.name, true) if {
+# AUTHORIZED_PREFIX_REQUIRED: topics must start with one of the team's authorised prefixes
+# (input.team.authorizedPrefixes, case-insensitive; bypassable). Replaces TEAM_PREFIX_REQUIRED of contract 1.0.
+violations contains h.violation("AUTHORIZED_PREFIX_REQUIRED", "DENY", msg, "TOPIC", t.name, true) if {
 	h.stage_request
 	h.config.naming.requireTeamPrefix == true
 	some t in input.manifest.topics
-	not startswith(lower(t.name), h.team_prefix)
-	msg := sprintf("topic '%s' must start with team prefix '%s'", [t.name, h.team_prefix])
+	not h.has_authorized_prefix(t.name)
+	msg := sprintf("topic '%s' must start with an authorised prefix of team '%s' (%s)", [t.name, h.team_id, prefix_list])
 }
+
+prefix_list := "none configured" if count(h.team_prefixes) == 0
+
+prefix_list := concat(", ", h.team_prefixes) if count(h.team_prefixes) > 0
 
 # ENV_NAME_RESTRICTION: environment-specific forbidden name patterns (bypassable).
 violations contains h.violation("ENV_NAME_RESTRICTION", "DENY", msg, "TOPIC", t.name, true) if {
@@ -30,12 +35,12 @@ violations contains h.violation("ENV_NAME_RESTRICTION", "DENY", msg, "TOPIC", t.
 
 # ---- bundle contract
 
-contract_version := "1.0"
+contract_version := "2.0"
 
 approvals := set()
 
 catalog := [
 	{"policyId": "TOPIC_NAME_PATTERN", "bundle": "naming", "kind": "VIOLATION", "section": "naming", "severity": "DENY", "bypassable": true, "stages": ["REQUEST"], "resourceType": "TOPIC", "description": "Topic names must match configuration naming.topicPattern."},
-	{"policyId": "TEAM_PREFIX_REQUIRED", "bundle": "naming", "kind": "VIOLATION", "section": "naming", "severity": "DENY", "bypassable": true, "stages": ["REQUEST"], "resourceType": "TOPIC", "description": "Topics must start with the owning team prefix when naming.requireTeamPrefix is true."},
+	{"policyId": "AUTHORIZED_PREFIX_REQUIRED", "bundle": "naming", "kind": "VIOLATION", "section": "naming", "severity": "DENY", "bypassable": true, "stages": ["REQUEST"], "resourceType": "TOPIC", "description": "Topics must start with one of the team's authorised prefixes (team configuration) when naming.requireTeamPrefix is true."},
 	{"policyId": "ENV_NAME_RESTRICTION", "bundle": "naming", "kind": "VIOLATION", "section": "naming", "severity": "DENY", "bypassable": true, "stages": ["REQUEST"], "resourceType": "TOPIC", "description": "Topic names must not match naming.environmentRestrictions[env].forbiddenPatterns."},
 ]

@@ -19,10 +19,12 @@ for spec in "requests.manifest:3" "response.manifest:3" "teams.repo.manifest:3:c
 done
 
 # Note: the CLI `kafka-topics --describe` additionally needs DescribeConfigs; the services themselves only produce/consume.
-echo ">> governance: write commands, read responses"
+echo ">> governance: write commands, read responses, read confirmed state (never written)"
 acl governance --operation Write --operation Describe --topic requests.manifest
 acl governance --operation Read --operation Describe --topic response.manifest
 acl governance --operation Read --group governance
+acl governance --operation Read --operation Describe --topic teams.repo.manifest
+acl governance --operation Read --group governance-usage
 
 echo ">> orchestrator: read commands, write responses, dispatch actions, read statuses"
 # The real Orchestrator (Kafka Streams) additionally needs its internal topics/group/transactional ids
@@ -30,6 +32,7 @@ echo ">> orchestrator: read commands, write responses, dispatch actions, read st
 acl orchestrator --operation Read --operation Describe --topic requests.manifest
 acl orchestrator --operation Write --operation Describe --topic response.manifest
 acl orchestrator --operation Write --operation Describe --topic teams.changes
+acl orchestrator --operation Write --operation Describe --topic teams.repo.manifest
 acl orchestrator --operation Read --operation Describe --topic request.status
 acl orchestrator --operation Read --group orchestrator-simulator
 

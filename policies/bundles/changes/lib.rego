@@ -13,8 +13,23 @@ env := input.environment
 
 team_id := input.team.id
 
-# Lower-cased team prefix used by the naming policy, e.g. "team-a" -> "team-a."
-team_prefix := concat("", [lower(team_id), object.get(config.naming, "teamPrefixSeparator", ".")])
+# Authorised topic prefixes of the team (input contract 2.0, lower-cased). Governance defaults to "<teamId><separator>"
+# for teams without a stored configuration, so an empty list means "no prefix is authorised".
+team_prefixes := [lower(p) | some p in object.get(input.team, "authorizedPrefixes", [])]
+
+has_authorized_prefix(name) if {
+	some p in team_prefixes
+	startswith(lower(name), p)
+}
+
+# Enforcement mode of a policy from configuration.enforcement: "enforce" (default) or "shadow" (recorded, never blocking).
+enforcement(policy_id) := object.get(config, ["enforcement", policy_id], "enforce")
+
+# Usage counters supplied by Governance (input.usage.{current,reserved,delta}[key]); missing keys count as 0.
+usage_value(section, key) := to_number(object.get(input, ["usage", section, key], 0))
+
+# Projected team usage for one quota key: confirmed + reserved by other in-flight plans + what this request adds.
+projected(key) := (usage_value("current", key) + usage_value("reserved", key)) + usage_value("delta", key)
 
 # Topic names affected by a plan (create/update/delete) for action-level rules.
 plan_topics contains a.resourceName if {
@@ -39,7 +54,8 @@ bindings contains b if {
 	some b in p.rbac
 }
 
-# Standard violation object. `bypassable` decides whether a scoped exception may exempt it.
+# Standard violation object. `bypassable` decides whether a scoped exception may exempt it; `enforcement` whether it
+# blocks ("enforce") or is only recorded ("shadow").
 violation(policy_id, severity, msg, rtype, rname, bypassable) := {
 	"policyId": policy_id,
 	"severity": severity,
@@ -47,6 +63,7 @@ violation(policy_id, severity, msg, rtype, rname, bypassable) := {
 	"resourceType": rtype,
 	"resourceName": rname,
 	"bypassable": bypassable,
+	"enforcement": enforcement(policy_id),
 }
 
 approval(policy_id, msg, rtype, rname) := {
@@ -54,4 +71,5 @@ approval(policy_id, msg, rtype, rname) := {
 	"message": msg,
 	"resourceType": rtype,
 	"resourceName": rname,
+	"enforcement": enforcement(policy_id),
 }

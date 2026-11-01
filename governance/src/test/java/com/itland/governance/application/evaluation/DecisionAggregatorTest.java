@@ -12,11 +12,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DecisionAggregatorTest {
 
   private static OpaEvaluation.Violation v(String id, String severity, boolean bypassable, boolean exempted, String exc) {
-    return new OpaEvaluation.Violation(id, severity, "m", "TOPIC", "t", bypassable, exempted, exc);
+    return new OpaEvaluation.Violation(id, severity, "m", "TOPIC", "t", bypassable, exempted, exc, "enforce");
   }
 
   private static OpaEvaluation.Result result(String decision, List<OpaEvaluation.Violation> violations, List<OpaEvaluation.Approval> approvals) {
-    return new OpaEvaluation.Result(decision, violations, approvals, List.of(), List.of(), true, java.util.Map.of(), java.util.Map.of("core", "core-r1"));
+    return new OpaEvaluation.Result(decision, violations, approvals, List.of(), List.of(), true, java.util.Map.of(), java.util.Map.of("core", "core-r1"), "2.0");
   }
 
   @Test
@@ -56,7 +56,7 @@ class DecisionAggregatorTest {
 
   @Test
   void approvalRequiredOnlyWithoutBlockingViolations() {
-    var approval = new OpaEvaluation.Approval("A", "m", "TOPIC", "t");
+    var approval = new OpaEvaluation.Approval("A", "m", "TOPIC", "t", "enforce");
     assertThat(DecisionAggregator.aggregate(result("REQUIRE_APPROVAL", List.of(), List.of(approval)), Set.of()).type()).isEqualTo(DecisionType.REQUIRE_APPROVAL);
     assertThat(DecisionAggregator.aggregate(result("DENY", List.of(v("P", "DENY", true, false, null)), List.of(approval)), Set.of()).type()).isEqualTo(DecisionType.DENY);
   }
@@ -64,9 +64,37 @@ class DecisionAggregatorTest {
   @Test
   void violationsAreSortedDeterministically() {
     var agg = DecisionAggregator.aggregate(result("DENY", List.of(
-        new OpaEvaluation.Violation("Z", "DENY", "m", "TOPIC", "b", true, false, null),
-        new OpaEvaluation.Violation("A", "DENY", "m", "TOPIC", "z", true, false, null),
-        new OpaEvaluation.Violation("A", "DENY", "m", "TOPIC", "a", true, false, null)), List.of()), Set.of());
+        new OpaEvaluation.Violation("Z", "DENY", "m", "TOPIC", "b", true, false, null, "enforce"),
+        new OpaEvaluation.Violation("A", "DENY", "m", "TOPIC", "z", true, false, null, "enforce"),
+        new OpaEvaluation.Violation("A", "DENY", "m", "TOPIC", "a", true, false, null, "enforce")), List.of()), Set.of());
     assertThat(agg.violations()).extracting(x -> x.policyId() + "/" + x.resourceName()).containsExactly("A/a", "A/z", "Z/b");
+  }
+
+  @Test
+  void shadowViolationIsRecordedButNeverBlocks() {
+    var shadow = new OpaEvaluation.Violation("P", "DENY", "m", "TOPIC", "t", true, false, null, "shadow");
+    var agg = DecisionAggregator.aggregate(result("ALLOW", List.of(shadow), List.of()), Set.of());
+    assertThat(agg.type()).isEqualTo(DecisionType.ALLOW);
+    assertThat(agg.consistentWithOpa()).isTrue();
+    assertThat(agg.violations()).singleElement().satisfies(v -> {
+      assertThat(v.shadow()).isTrue();
+      assertThat(v.blocking()).isFalse();
+    });
+  }
+
+  @Test
+  void shadowApprovalDoesNotRequireApproval() {
+    var shadow = new OpaEvaluation.Approval("A", "m", "TOPIC", "t", "shadow");
+    var enforced = new OpaEvaluation.Approval("B", "m", "TOPIC", "t", null);
+    assertThat(DecisionAggregator.aggregate(result("ALLOW", List.of(), List.of(shadow)), Set.of()).type()).isEqualTo(DecisionType.ALLOW);
+    var agg = DecisionAggregator.aggregate(result("REQUIRE_APPROVAL", List.of(), List.of(shadow, enforced)), Set.of());
+    assertThat(agg.type()).isEqualTo(DecisionType.REQUIRE_APPROVAL);
+    assertThat(agg.approvals()).extracting(a -> a.enforcement()).containsExactly("shadow", "enforce");
+  }
+
+  @Test
+  void missingEnforcementMeansEnforced() {
+    var legacy = new OpaEvaluation.Violation("P", "DENY", "m", "TOPIC", "t", true, false, null, null);
+    assertThat(DecisionAggregator.aggregate(result("DENY", List.of(legacy), List.of()), Set.of()).type()).isEqualTo(DecisionType.DENY);
   }
 }

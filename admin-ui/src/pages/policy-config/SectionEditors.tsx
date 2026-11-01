@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, fieldProps } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { ChipsInput } from '@/components/ui/chips';
-import type { PolicyConfigurationContent } from '@/api/types';
+import type { EnforcementMode, PolicyConfigurationContent } from '@/api/types';
+import { useCatalog } from '@/api/hooks';
+import { Select } from '@/components/ui/form';
+import { Badge } from '@/components/ui/badge';
 import { LIMIT_KEYS, type LimitKey } from './configSchema';
 
 type Content = PolicyConfigurationContent;
@@ -212,7 +215,7 @@ export function NamingEditor({ value, patch }: { value: Content['naming']; patch
         label="requireTeamPrefix"
         value={!!value.requireTeamPrefix}
         onChange={(v) => patch((s) => ({ ...s, requireTeamPrefix: v }))}
-        hint="Topics must start with <teamId><separator> (TEAM_PREFIX_REQUIRED)."
+        hint="Topics must start with one of the team's authorised prefixes, from the team configuration (AUTHORIZED_PREFIX_REQUIRED)."
       />
       <TextField
         id="naming-teamPrefixSeparator"
@@ -416,6 +419,75 @@ export function ApprovalsEditor({
         value={value.sensitiveEnvironments ?? []}
         onChange={(l) => patch((s) => ({ ...s, sensitiveEnvironments: l }))}
       />
+    </div>
+  );
+}
+
+/**
+ * Per-policy enforcement mode: enforce (default) or shadow (recorded as a finding, never blocking). Policies come from
+ * the catalogue of the loaded bundles; ids not in the catalogue (e.g. a policy of a bundle not loaded yet) stay editable.
+ */
+export function EnforcementEditor({
+  value,
+  onChange,
+}: {
+  value: Record<string, EnforcementMode>;
+  onChange: (v: Record<string, EnforcementMode>) => void;
+}) {
+  const catalog = useCatalog();
+  const ids = Array.from(new Set([...(catalog.data ?? []).map((p) => p.policyId), ...Object.keys(value ?? {})])).sort();
+  const shadowCount = Object.values(value ?? {}).filter((m) => m === 'shadow').length;
+  const set = (id: string, mode: EnforcementMode) => {
+    const next = Object.fromEntries(Object.entries(value ?? {}).filter(([k]) => k !== id)) as Record<string, EnforcementMode>;
+    if (mode === 'shadow') next[id] = mode;
+    onChange(next);
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted">
+        A policy in <strong>shadow</strong> mode is still evaluated and its findings are recorded (Shadow findings page,
+        metric governance_shadow_findings_total), but it never denies and never opens an approval. Only policies set to
+        shadow are stored; everything else enforces.{' '}
+        {shadowCount > 0 && <Badge tone="warn">{shadowCount} in shadow</Badge>}
+      </p>
+      {catalog.isError && (
+        <p className="text-xs text-warn">Catalogue unavailable: only policies already listed in this version are shown.</p>
+      )}
+      {ids.length === 0 ? (
+        <p className="text-xs text-muted">No policies known.</p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {ids.map((id) => {
+            const entry = (catalog.data ?? []).find((p) => p.policyId === id);
+            const mode: EnforcementMode = value?.[id] === 'shadow' ? 'shadow' : 'enforce';
+            return (
+              <div key={id} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                <div className="min-w-0">
+                  <label
+                    htmlFor={`enforcement-${id}`}
+                    className="mono block overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium"
+                    title={entry?.description}
+                  >
+                    {id}
+                  </label>
+                  <p className="text-xs text-muted">
+                    {entry ? `${entry.bundle ?? '?'} · ${entry.kind === 'APPROVAL' ? 'approval' : entry.severity.toLowerCase()}` : 'not in the loaded catalogue'}
+                  </p>
+                </div>
+                <Select
+                  id={`enforcement-${id}`}
+                  className="w-32"
+                  value={mode}
+                  onChange={(e) => set(id, e.target.value as EnforcementMode)}
+                >
+                  <option value="enforce">enforce</option>
+                  <option value="shadow">shadow</option>
+                </Select>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

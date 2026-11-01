@@ -24,11 +24,13 @@ public class DecisionRepository {
   private static final TypeReference<List<ApprovalRequirement>> APPROVALS = new TypeReference<>() {};
 
   private final JdbcClient jdbc;
+  private final ShadowFindingRepository shadowFindings;
   private Json json; // not final: referenced from row-mapper field initializers
 
-  public DecisionRepository(JdbcClient jdbc, Json json) {
+  public DecisionRepository(JdbcClient jdbc, Json json, ShadowFindingRepository shadowFindings) {
     this.jdbc = jdbc;
     this.json = json;
+    this.shadowFindings = shadowFindings;
   }
 
   private final RowMapper<GovernanceDecision> mapper = (rs, i) -> new GovernanceDecision(
@@ -39,6 +41,7 @@ public class DecisionRepository {
       json.read(rs.getString("approval_requirements"), APPROVALS), json.readStrings(rs.getString("applied_exceptions")),
       rs.getString("error_message"), Jdbc.longOrNull(rs, "opa_latency_ms"), Jdbc.instant(rs, "evaluated_at"));
 
+  /** Persists the decision and, in the same transaction, one shadow finding per violation or approval in shadow mode. */
   public void insert(GovernanceDecision d) {
     jdbc.sql("""
         INSERT INTO governance_decision (id, request_id, plan_id, stage, decision_type, policy_revision, policy_revisions, configuration_version,
@@ -53,6 +56,7 @@ public class DecisionRepository {
         .param("approvals", json.write(d.approvalRequirements())).param("exceptions", json.write(d.appliedExceptions()))
         .param("error", d.errorMessage()).param("latency", d.opaLatencyMs()).param("at", Jdbc.ts(d.evaluatedAt()))
         .update();
+    shadowFindings.insertFor(d);
   }
 
   public Optional<GovernanceDecision> findById(String id) {

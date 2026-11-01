@@ -12,6 +12,9 @@
 | `governance_outbox_pending` / `governance_outbox_failed` | Kafka publishing backlog / permanently failed commands (alert on failed > 0) |
 | `governance_inbox_retry` / `governance_kafka_deadletters_open` | events awaiting retry / dead letters (alert on open > 0) |
 | `governance_approvals_pending` | human backlog |
+| `governance_shadow_findings_total{policyId,kind}` | what a shadow-mode policy would have denied / sent to approval; the soak evidence before flipping it to enforce |
+| `governance_usage_snapshots_total{outcome}` / `governance_usage_stale_total` | confirmed-state records consumed from `teams.repo.manifest` / stage 2 evaluations deferred because the snapshot lagged the plan (alert when `stale` keeps rising: the usage consumer is behind or the topic is unreadable) |
+| `governance_quota_reservations_open`, `governance_quota_reservations_total{outcome}` | capacity held by authorised plans still in flight; `EXPIRED` rising means plans are authorised but never reported back |
 | `kafka_consumer_fetch_manager_records_lag_max` | consumer lag on `response.manifest` |
 
 ## Diagnosing a request
@@ -27,12 +30,18 @@
 | Request stuck in `SUBMITTED` | Orchestrator (or stand-in) down / outbox not relayed | `governance_outbox_pending`, Orchestrator logs |
 | Request `EVALUATION_ERROR` after PLAN_PROPOSED | stage 2 OPA failure; inbox retries (`max-evaluation-attempts`) then REJECT_PLAN is sent | fix OPA; resubmit |
 | `STALE_PLAN` | confirmed state moved while an approval was pending | resubmit the manifest (replan) |
+| Stage 2 `EVALUATION_ERROR` "Usage snapshot ... older than the plan" | Governance has not consumed the confirmed state the plan was computed against (`teams.repo.manifest` lag, missing read ACL, consumer disabled) | check the usage consumer logs/lag, `governance_usage_snapshots_total`; the inbox retries by itself; `GOVERNANCE_USAGE_REQUIRE_FRESH_SNAPSHOT=false` disables the guard (quotas may then undercount) |
+| `TEAM_QUOTA_EXCEEDED` although the team "has room" | reservations of in-flight plans count; or confirmed usage includes another repository of the team | `GET /api/v1/admin/teams/{id}/usage` (capacity per environment, repositories, open reservations) |
+| 409 `TEAM_CONFIGURATION_EXTERNAL` on a team edit | the team is owned by an external registry | edit the registry, or save with `source=governance` to take ownership (audited) |
 | Dead letters | poison record or handler bug | `GET /api/v1/admin/dead-letters`, fix, `POST /api/v1/admin/dead-letters/{id}/resolve` |
 | Bundle `FAILED` | OPA could not load it; previous version restored automatically | fix the bundle, upload a new revision |
 
 ## Policy rollout
 `policies/build.sh <revision>` builds six bundles and `dist/release.json` → upload each (`POST /api/v1/admin/policy-bundles`, bundle + shared test report) → `POST /api/v1/admin/policy-releases {versionIds}` activates the set atomically (`deploy/scripts/upload-release.sh` does all of it) → watch `GET /api/v1/admin/policy-releases/current` until `match` and `ready` → `POST /api/v1/admin/policy-bundles/rollback?bundle=<name>` restores one bundle if needed. Readiness (`/actuator/health/readiness`, component `policyRelease`) is DOWN while OPA runs anything but the active release, so a replica with a stale bundle receives no traffic. Configuration changes: create a draft, activate, rollback.
 The same steps are available in the admin console (`/policy-bundles` upload + activate with a live adoption watcher, `/policy-configurations` with a diff before activation). See `docs/admin-ui.md`.
+
+## Team configuration and shadow mode
+`PUT /api/v1/admin/teams/{teamId}` (or the console's Teams page) sets authorised prefixes, quotas and role overrides; it applies to the next evaluation. To soak a policy: create a policy configuration version with `enforcement: {"POLICY_ID": "shadow"}`, activate it, watch `GET /api/v1/admin/shadow-findings?policyId=POLICY_ID` and the metric, then create a version without the entry to enforce.
 
 ## Admin console
 | Symptom | Cause | Action |

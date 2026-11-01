@@ -19,6 +19,7 @@ public class GovernanceMetrics {
   private final AtomicLong inboxRetry = new AtomicLong();
   private final AtomicLong deadLetters = new AtomicLong();
   private final AtomicLong policyRevisionMatch = new AtomicLong(-1);
+  private final AtomicLong reservationsOpen = new AtomicLong();
 
   public GovernanceMetrics(MeterRegistry registry) {
     this.registry = registry;
@@ -29,7 +30,30 @@ public class GovernanceMetrics {
     Gauge.builder("governance.kafka.deadletters.open", deadLetters, AtomicLong::get).register(registry);
     Gauge.builder("governance.policy.revision.match", policyRevisionMatch, AtomicLong::get)
         .description("1 when OPA runs the active bundle revision, 0 when it differs, -1 when unknown").register(registry);
+    Gauge.builder("governance.quota.reservations.open", reservationsOpen, AtomicLong::get)
+        .description("Quota reservations held by authorised plans that have not completed yet").register(registry);
   }
+
+  /** governance_shadow_findings_total{policyId,kind}: findings of policies in shadow mode (recorded, never blocking). */
+  public void recordShadowFinding(String policyId, String kind) {
+    Counter.builder("governance.shadow.findings").tag("policyId", policyId).tag("kind", kind).register(registry).increment();
+  }
+
+  /** Confirmed-state snapshots consumed from teams.repo.manifest, by outcome (APPLIED | STALE | IGNORED). */
+  public void recordUsageSnapshot(String outcome) {
+    Counter.builder("governance.usage.snapshots").tag("outcome", outcome).register(registry).increment();
+  }
+
+  /** Stage 2 evaluations deferred because the usage snapshot was older than the plan's state version. */
+  public void recordUsageStale() {
+    Counter.builder("governance.usage.stale").register(registry).increment();
+  }
+
+  public void recordReservation(String outcome) {
+    Counter.builder("governance.quota.reservations").tag("outcome", outcome).register(registry).increment();
+  }
+
+  public void reservationsOpen(long v) { reservationsOpen.set(v); }
 
   public void recordOpaEvaluation(String stage, String outcome, Duration latency) {
     Timer.builder("governance.opa.evaluation").tag("stage", stage).tag("outcome", outcome)

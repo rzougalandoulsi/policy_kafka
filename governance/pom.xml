@@ -140,6 +140,13 @@
       <artifactId>awaitility</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Validates OpaInputAssembler output against contracts/opa/input.schema.json (packaged in the contracts jar). -->
+    <dependency>
+      <groupId>com.networknt</groupId>
+      <artifactId>json-schema-validator</artifactId>
+      <version>1.5.8</version>
+      <scope>test</scope>
+    </dependency>
     <!-- End-to-end tests run the Orchestrator and Processor stand-ins in-process. -->
     <dependency>
       <groupId>com.itland</groupId>

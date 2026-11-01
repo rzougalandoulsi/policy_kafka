@@ -8,6 +8,10 @@ import type {
   PolicyConfigurationContent,
   PolicyException,
   RevisionDiagnostics,
+  ShadowFinding,
+  TeamConfiguration,
+  TeamConfigurationChange,
+  TeamUsage,
 } from '@/api/types';
 
 export const NOW = new Date('2026-11-01T12:00:00Z');
@@ -119,7 +123,7 @@ export const exceptions: PolicyException[] = [
   },
   {
     id: 'exc-33333333-3333-3333-3333-333333333333',
-    policyId: 'TEAM_PREFIX_REQUIRED',
+    policyId: 'AUTHORIZED_PREFIX_REQUIRED',
     principalId: null,
     teamId: 'team-b',
     environment: '*',
@@ -264,7 +268,7 @@ export const catalog: CatalogPolicy[] = [
     description: 'Topic names must match naming.topicPattern.',
   },
   {
-    policyId: 'TEAM_PREFIX_REQUIRED',
+    policyId: 'AUTHORIZED_PREFIX_REQUIRED',
     bundle: 'naming',
     kind: 'VIOLATION',
     section: 'naming',
@@ -272,7 +276,18 @@ export const catalog: CatalogPolicy[] = [
     bypassable: true,
     stages: ['REQUEST'],
     resourceType: 'TOPIC',
-    description: 'Topics must start with the team prefix.',
+    description: "Topics must start with one of the team's authorised prefixes.",
+  },
+  {
+    policyId: 'TEAM_QUOTA_EXCEEDED',
+    bundle: 'quotas',
+    kind: 'VIOLATION',
+    section: 'limits',
+    severity: 'DENY',
+    bypassable: true,
+    stages: ['REQUEST', 'ACTION_PLAN'],
+    resourceType: 'QUOTA',
+    description: 'Projected team usage must stay within the team quotas.',
   },
   {
     policyId: 'RBAC_ADMIN_ROLE_FORBIDDEN',
@@ -326,3 +341,166 @@ export function fakeJwt(claims: Record<string, unknown>): string {
 export const ADMIN_TOKEN = fakeJwt({ sub: 'admin-1', roles: ['governance-admin', 'governance-auditor'] });
 export const AUDITOR_TOKEN = fakeJwt({ sub: 'auditor-1', roles: ['governance-auditor'] });
 export const DEV_TOKEN = fakeJwt({ sub: 'dev-1', roles: [], teams: ['team-a'] });
+
+export const teams: TeamConfiguration[] = [
+  {
+    teamId: 'team-a',
+    version: 3,
+    authorizedPrefixes: ['team-a.', 'orders.'],
+    quotas: { topics: 25, topicPartitions: 200 },
+    allowedRoles: [],
+    environments: { production: { changeWindow: 'weekdays' } },
+    source: 'governance',
+    sourceVersion: null,
+    syncedAt: null,
+    comment: 'orders domain moved in',
+    updatedBy: 'admin-1',
+    createdAt: '2026-10-10T00:00:00Z',
+    updatedAt: '2026-10-28T09:00:00Z',
+  },
+  {
+    teamId: 'team-ext',
+    version: 1,
+    authorizedPrefixes: ['ext.'],
+    quotas: { topics: 5 },
+    allowedRoles: ['DeveloperRead'],
+    environments: {},
+    source: 'external',
+    sourceVersion: 'registry-42',
+    syncedAt: '2026-10-30T00:00:00Z',
+    comment: null,
+    updatedBy: 'sync',
+    createdAt: '2026-10-30T00:00:00Z',
+    updatedAt: '2026-10-30T00:00:00Z',
+  },
+];
+
+export const teamDefaults = (teamId: string): TeamConfiguration => ({
+  teamId,
+  version: 0,
+  authorizedPrefixes: [`${teamId}.`],
+  quotas: {},
+  allowedRoles: [],
+  environments: {},
+  source: 'default',
+  sourceVersion: null,
+  syncedAt: null,
+  comment: null,
+  updatedBy: 'system',
+  createdAt: null,
+  updatedAt: null,
+});
+
+export const teamHistory: TeamConfigurationChange[] = [
+  {
+    id: 3,
+    teamId: 'team-a',
+    version: 3,
+    content: { authorizedPrefixes: ['team-a.', 'orders.'], quotas: { topics: 25, topicPartitions: 200 } },
+    action: 'UPDATED',
+    changedBy: 'admin-1',
+    changedAt: '2026-10-28T09:00:00Z',
+    comment: 'orders domain moved in',
+  },
+  {
+    id: 1,
+    teamId: 'team-a',
+    version: 1,
+    content: { authorizedPrefixes: ['team-a.'], quotas: {} },
+    action: 'CREATED',
+    changedBy: 'admin-1',
+    changedAt: '2026-10-10T00:00:00Z',
+    comment: null,
+  },
+];
+
+export const teamUsage: TeamUsage = {
+  teamId: 'team-a',
+  currentByEnvironment: {
+    development: { topics: 4, topicPartitions: 10, identityPools: 0, rbacBindings: 1 },
+    production: { topics: 1, topicPartitions: 6, identityPools: 0, rbacBindings: 0 },
+  },
+  reservedByEnvironment: { production: { topics: 2, topicPartitions: 128 } },
+  repositories: [
+    {
+      repositoryId: 'repo-1',
+      environment: 'development',
+      stateVersion: 7,
+      counts: { topics: 3, topicPartitions: 9, identityPools: 0, rbacBindings: 1 },
+      topics: ['team-a.orders', 'team-a.payments', 'team-a.audit'],
+      identityPools: [],
+      rbacBindings: ['User:sa-1#Topic:team-a.orders#DeveloperRead'],
+      snapshotAt: '2026-11-01T11:59:00Z',
+    },
+    {
+      repositoryId: 'repo-2',
+      environment: 'development',
+      stateVersion: 1,
+      counts: { topics: 1, topicPartitions: 1, identityPools: 0, rbacBindings: 0 },
+      topics: ['team-a.repo2.events'],
+      identityPools: [],
+      rbacBindings: [],
+      snapshotAt: '2026-11-01T11:50:00Z',
+    },
+    {
+      repositoryId: 'repo-1',
+      environment: 'production',
+      stateVersion: 2,
+      counts: { topics: 1, topicPartitions: 6, identityPools: 0, rbacBindings: 0 },
+      topics: ['team-a.orders'],
+      identityPools: [],
+      rbacBindings: [],
+      snapshotAt: '2026-11-01T10:00:00Z',
+    },
+  ],
+  reservations: [
+    {
+      id: 'qr-1',
+      environment: 'production',
+      requestId: 'req-11111111-aaaa',
+      planId: 'plan-1',
+      deltas: { topics: 2, topicPartitions: 128 },
+      createdAt: '2026-11-01T11:58:00Z',
+      expiresAt: '2026-11-01T12:13:00Z',
+    },
+  ],
+};
+
+export const shadowFindings: ShadowFinding[] = [
+  {
+    id: 2,
+    decisionId: 'dec-2',
+    requestId: 'req-22222222-bbbb',
+    planId: null,
+    stage: 'REQUEST',
+    kind: 'VIOLATION',
+    policyId: 'AUTHORIZED_PREFIX_REQUIRED',
+    severity: 'DENY',
+    message: "topic 'other.thing' must start with an authorised prefix of team 'team-a' (team-a.)",
+    resourceType: 'TOPIC',
+    resourceName: 'other.thing',
+    recordedAt: '2026-11-01T11:30:00Z',
+    teamId: 'team-a',
+    repositoryId: 'repo-3',
+    environment: 'development',
+    principalId: 'dev-1',
+  },
+  {
+    id: 1,
+    decisionId: 'dec-1',
+    requestId: 'req-33333333-cccc',
+    planId: 'plan-9',
+    stage: 'ACTION_PLAN',
+    kind: 'APPROVAL',
+    policyId: 'PROD_TOPIC_DELETE_REQUIRES_APPROVAL',
+    severity: 'REQUIRE_APPROVAL',
+    message: "deleting topic 'team-a.old' in production requires approval",
+    resourceType: 'TOPIC',
+    resourceName: 'team-a.old',
+    recordedAt: '2026-11-01T10:30:00Z',
+    teamId: 'team-a',
+    repositoryId: 'repo-1',
+    environment: 'production',
+    principalId: 'dev-1',
+  },
+];

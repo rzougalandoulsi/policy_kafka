@@ -15,9 +15,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Read-only catalogue of the policies the ACTIVE bundle can emit. The bundle itself is the source of truth
- * (policies/bundles/*/ (merged by core.rego into data.governance.core.policy_catalog)): Governance only relays data.governance.catalog.policies from OPA so
- * operators (and the admin UI) can tell which policies are bypassable before scoping an exception.
+ * Read-only catalogue of the policies the ACTIVE release can emit. The bundles themselves are the source of truth
+ * (each bundle under policies/bundles declares its catalogue; core.rego merges them into
+ * data.governance.core.policy_catalog): Governance only relays that document from OPA so operators (and the admin UI)
+ * can tell which policies are bypassable before scoping an exception.
  */
 @RestController
 @RequestMapping("/api/v1/admin/policies")

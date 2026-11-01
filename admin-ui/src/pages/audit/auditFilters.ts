@@ -56,6 +56,10 @@ export function targetLink(targetType: string, targetId: string): string | null 
       return '/policy-bundles';
     case 'approval_configuration':
       return '/approval-rules';
+    case 'policy_release':
+      return '/policy-bundles';
+    case 'team_configuration':
+      return `/teams/${encodeURIComponent(targetId)}`;
     case 'kafka_dead_letter':
       return '/audit#dead-letters';
     default:

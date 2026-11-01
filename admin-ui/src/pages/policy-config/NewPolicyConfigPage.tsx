@@ -15,7 +15,7 @@ import { stableStringify } from '@/lib/utils';
 import type { PolicyConfigurationContent } from '@/api/types';
 import { cloneContent, EMPTY_CONTENT, validateContent } from './configSchema';
 import { ConfigDiff } from './ConfigDiff';
-import { ApprovalsEditor, DestructiveEditor, LimitsEditor, NamingEditor, RbacEditor } from './SectionEditors';
+import { ApprovalsEditor, DestructiveEditor, EnforcementEditor, LimitsEditor, NamingEditor, RbacEditor } from './SectionEditors';
 
 type Content = PolicyConfigurationContent;
 
@@ -166,6 +166,10 @@ export function NewPolicyConfigPage() {
                     {s}
                   </TabsTrigger>
                 ))}
+                <TabsTrigger value="enforcement">
+                  enforcement
+                  {content.enforcement && Object.values(content.enforcement).some((m) => m === 'shadow') ? ' (shadow)' : ''}
+                </TabsTrigger>
                 <TabsTrigger value="json">Raw JSON</TabsTrigger>
               </TabsList>
               <TabsContent value="naming" className="pt-4">
@@ -217,6 +221,17 @@ export function NewPolicyConfigPage() {
                     onFix={() => update((c) => ({ ...c, approvals: EMPTY_CONTENT.approvals }))}
                   />
                 )}
+              </TabsContent>
+              <TabsContent value="enforcement" className="pt-4">
+                <EnforcementEditor
+                  value={content.enforcement ?? {}}
+                  onChange={(m) =>
+                    update((c) => {
+                      const { enforcement: _previous, ...rest } = c;
+                      return Object.keys(m).length === 0 ? (rest as Content) : { ...rest, enforcement: m };
+                    })
+                  }
+                />
               </TabsContent>
               <TabsContent value="json" className="pt-4">
                 <Field

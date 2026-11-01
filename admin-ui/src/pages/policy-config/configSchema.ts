@@ -35,6 +35,15 @@ export function validateContent(content: unknown): ValidationResult {
         errors.push(`limits.${k} must be a positive number`);
     }
   }
+  const enforcement = content.enforcement;
+  if (enforcement !== undefined) {
+    if (!isObject(enforcement)) errors.push('enforcement must be an object of policyId -> enforce|shadow');
+    else
+      for (const [id, mode] of Object.entries(enforcement)) {
+        if (!/^[A-Z][A-Z0-9_]{2,63}$/.test(id)) errors.push(`enforcement key '${id}' is not a policy id`);
+        else if (mode !== 'enforce' && mode !== 'shadow') errors.push(`enforcement.${id} must be one of [enforce, shadow]`);
+      }
+  }
   const naming = content.naming;
   if (isObject(naming) && typeof naming.topicPattern === 'string') {
     try {

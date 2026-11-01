@@ -16,7 +16,7 @@ describe('ExceptionsPage', () => {
     );
     expect(screen.getByRole('link', { name: 'TOPIC_DELETE_RESTRICTED' })).toBeInTheDocument();
     // revoked one is filtered out by the API unless includeInactive
-    expect(screen.queryByRole('link', { name: 'TEAM_PREFIX_REQUIRED' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'AUTHORIZED_PREFIX_REQUIRED' })).not.toBeInTheDocument();
     const table = screen.getByRole('table');
     expect(within(table).getByText('any principal', { exact: false })).toBeInTheDocument();
     expect(within(table).getByText('Expiring soon')).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe('ExceptionsPage', () => {
     renderApp(<ExceptionsPage />, { route: '/exceptions', path: '/exceptions' });
     await screen.findByRole('link', { name: 'MAX_PARTITIONS_PER_TOPIC' });
     await user.click(screen.getByRole('switch', { name: 'Include expired and revoked' }));
-    expect(await screen.findByRole('link', { name: 'TEAM_PREFIX_REQUIRED' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'AUTHORIZED_PREFIX_REQUIRED' })).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('Revoked')).toBeInTheDocument();
   });
 

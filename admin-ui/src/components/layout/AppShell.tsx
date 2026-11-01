@@ -1,14 +1,16 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Activity, BookOpenCheck, FileCode2, ScrollText, ShieldCheck, ShieldOff, Users } from 'lucide-react';
+import { Activity, BookOpenCheck, Eye, FileCode2, Group, ScrollText, ShieldCheck, ShieldOff, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserMenu } from './UserMenu';
 
 const NAV = [
   { to: '/', label: 'Overview', icon: Activity, end: true },
+  { to: '/teams', label: 'Teams', icon: Group },
   { to: '/exceptions', label: 'Exceptions', icon: ShieldOff },
   { to: '/policy-configurations', label: 'Policy configuration', icon: ShieldCheck },
   { to: '/policy-bundles', label: 'Policy bundles', icon: FileCode2 },
   { to: '/approval-rules', label: 'Approval rules', icon: Users },
+  { to: '/shadow-findings', label: 'Shadow findings', icon: Eye },
   { to: '/audit', label: 'Audit', icon: ScrollText },
 ];
 

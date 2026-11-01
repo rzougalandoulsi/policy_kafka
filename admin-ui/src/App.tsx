@@ -17,6 +17,9 @@ import { NewPolicyConfigPage } from '@/pages/policy-config/NewPolicyConfigPage';
 import { BundlesPage } from '@/pages/bundles/BundlesPage';
 import { ApprovalRulesPage } from '@/pages/approval-rules/ApprovalRulesPage';
 import { AuditPage } from '@/pages/audit/AuditPage';
+import { TeamsPage } from '@/pages/teams/TeamsPage';
+import { TeamDetailPage } from '@/pages/teams/TeamDetailPage';
+import { ShadowFindingsPage } from '@/pages/shadow/ShadowFindingsPage';
 
 export function createQueryClient() {
   return new QueryClient({
@@ -53,6 +56,9 @@ export function AppRoutes() {
         }
       >
         <Route index element={<OverviewPage />} />
+        <Route path="teams" element={<TeamsPage />} />
+        <Route path="teams/:teamId" element={<TeamDetailPage />} />
+        <Route path="shadow-findings" element={<ShadowFindingsPage />} />
         <Route path="exceptions" element={<ExceptionsPage />} />
         <Route path="exceptions/:id" element={<ExceptionDetailPage />} />
         <Route path="policy-configurations" element={<PolicyConfigPage />} />

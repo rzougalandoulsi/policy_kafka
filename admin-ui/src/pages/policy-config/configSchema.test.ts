@@ -28,6 +28,14 @@ describe('validateContent (parity with PolicyConfigurationService.validate)', ()
     expect(r.errors).toEqual([]);
     expect(r.warnings[0]).toMatch(/topicPattern/);
   });
+  it('validates the optional enforcement section', () => {
+    expect(validateContent({ ...seedConfigContent, enforcement: { AUTHORIZED_PREFIX_REQUIRED: 'shadow' } }).errors).toEqual([]);
+    expect(validateContent({ ...seedConfigContent, enforcement: { AUTHORIZED_PREFIX_REQUIRED: 'audit' } }).errors).toEqual([
+      'enforcement.AUTHORIZED_PREFIX_REQUIRED must be one of [enforce, shadow]',
+    ]);
+    expect(validateContent({ ...seedConfigContent, enforcement: { 'bad id': 'shadow' } }).errors[0]).toMatch(/not a policy id/);
+    expect(validateContent({ ...seedConfigContent, enforcement: ['x'] }).errors[0]).toMatch(/enforcement must be an object/);
+  });
   it('rejects non-objects', () => {
     expect(validateContent([]).errors[0]).toMatch(/JSON object/);
   });

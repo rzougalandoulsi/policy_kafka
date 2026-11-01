@@ -7,6 +7,8 @@ import {
   exceptionsApi,
   policyConfigApi,
   releasesApi,
+  shadowApi,
+  teamsApi,
 } from './endpoints';
 import type {
   ApprovalConfiguration,
@@ -22,7 +24,13 @@ import type {
   PolicyException,
   PolicyReleaseActivation,
   RevisionDiagnostics,
+  ShadowFinding,
+  ShadowFindingQuery,
+  TeamConfiguration,
+  TeamConfigurationChange,
+  TeamUsage,
   UploadBundleBody,
+  UpsertTeamBody,
 } from './types';
 
 export const queryKeys = {
@@ -38,6 +46,11 @@ export const queryKeys = {
   audit: (q: AuditQuery) => ['audit', q] as const,
   deadLetters: ['dead-letters'] as const,
   catalog: ['policy-catalog'] as const,
+  teams: ['teams'] as const,
+  team: (teamId: string) => ['teams', teamId] as const,
+  teamHistory: (teamId: string) => ['teams', teamId, 'history'] as const,
+  teamUsage: (teamId: string) => ['teams', teamId, 'usage'] as const,
+  shadowFindings: (q: ShadowFindingQuery) => ['shadow-findings', q] as const,
 };
 
 type Opts<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>;
@@ -177,4 +190,37 @@ export function useResolveDeadLetter() {
 }
 export function useCatalog(opts?: Opts<CatalogPolicy[]>) {
   return useQuery({ queryKey: queryKeys.catalog, queryFn: catalogApi.list, staleTime: 5 * 60_000, ...opts });
+}
+
+// ---- team configuration (input contract 2.0)
+export function useTeams(opts?: Opts<TeamConfiguration[]>) {
+  return useQuery({ queryKey: queryKeys.teams, queryFn: teamsApi.list, ...opts });
+}
+export function useTeam(teamId: string, opts?: Opts<TeamConfiguration>) {
+  return useQuery({ queryKey: queryKeys.team(teamId), queryFn: () => teamsApi.get(teamId), ...opts });
+}
+export function useTeamHistory(teamId: string, opts?: Opts<TeamConfigurationChange[]>) {
+  return useQuery({ queryKey: queryKeys.teamHistory(teamId), queryFn: () => teamsApi.history(teamId), ...opts });
+}
+export function useTeamUsage(teamId: string, opts?: Opts<TeamUsage>) {
+  return useQuery({ queryKey: queryKeys.teamUsage(teamId), queryFn: () => teamsApi.usage(teamId), ...opts });
+}
+export function useUpsertTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ teamId, body }: { teamId: string; body: UpsertTeamBody }) => teamsApi.upsert(teamId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['teams'] }),
+  });
+}
+export function useDeleteTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (teamId: string) => teamsApi.remove(teamId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['teams'] }),
+  });
+}
+
+// ---- shadow findings
+export function useShadowFindings(q: ShadowFindingQuery, opts?: Opts<ShadowFinding[]>) {
+  return useQuery({ queryKey: queryKeys.shadowFindings(q), queryFn: () => shadowApi.list(q), ...opts });
 }

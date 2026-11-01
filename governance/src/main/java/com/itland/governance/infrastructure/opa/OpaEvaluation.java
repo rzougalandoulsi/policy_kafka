@@ -21,7 +21,9 @@ public record OpaEvaluation(Result result, Provenance provenance) {
       /** contract version per loaded domain bundle. */
       Map<String, String> bundles,
       /** revision per bundle as OPA sees it (data.system.bundles). */
-      Map<String, String> revisions) {
+      Map<String, String> revisions,
+      /** core's input/output contract version (absent from contract 1.x cores). */
+      String contractVersion) {
     public Result {
       violations = violations == null ? List.of() : violations;
       approvals = approvals == null ? List.of() : approvals;
@@ -30,14 +32,21 @@ public record OpaEvaluation(Result result, Provenance provenance) {
       bundles = bundles == null ? Map.of() : bundles;
       revisions = revisions == null ? Map.of() : revisions;
     }
+
+    /** Major of the core contract; "1" when the core predates the field. */
+    public String contractMajor() {
+      String v = contractVersion == null || contractVersion.isBlank() ? "1.0" : contractVersion;
+      int dot = v.indexOf('.');
+      return dot < 0 ? v : v.substring(0, dot);
+    }
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Violation(String policyId, String severity, String message, String resourceType, String resourceName,
-                          Boolean bypassable, Boolean exempted, String exceptionId) {}
+                          Boolean bypassable, Boolean exempted, String exceptionId, String enforcement) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record Approval(String policyId, String message, String resourceType, String resourceName) {}
+  public record Approval(String policyId, String message, String resourceType, String resourceName, String enforcement) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Provenance(String version, Map<String, BundleInfo> bundles) {}

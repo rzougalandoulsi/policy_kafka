@@ -27,4 +27,17 @@ public record GovernanceDecision(
   public List<PolicyViolation> blockingViolations() {
     return violations.stream().filter(PolicyViolation::blocking).toList();
   }
+
+  /** Approval requirements that actually open an approval (shadow ones are findings only). */
+  public List<ApprovalRequirement> enforcedApprovals() {
+    return approvalRequirements.stream().filter(a -> !a.shadow()).toList();
+  }
+
+  public List<PolicyViolation> shadowViolations() {
+    return violations.stream().filter(PolicyViolation::shadow).toList();
+  }
+
+  public List<ApprovalRequirement> shadowApprovals() {
+    return approvalRequirements.stream().filter(ApprovalRequirement::shadow).toList();
+  }
 }

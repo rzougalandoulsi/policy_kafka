@@ -23,9 +23,14 @@ test_approvals_are_never_bypassable if {
 	count({p | some p in core.policy_catalog; p.kind == "APPROVAL"; p.bypassable == true}) == 0
 }
 
+test_catalogue_has_the_expected_size if {
+	count(core.policy_catalog) == 20
+	count(core.bypassable_ids) == 16
+}
+
 test_every_section_is_a_configuration_section if {
 	every p in core.policy_catalog {
-		p.section in {"naming", "rbac", "limits", "destructive", "approvals"}
+		p.section in {"naming", "rbac", "limits", "destructive", "approvals", "manifests"}
 	}
 }
 
@@ -63,7 +68,10 @@ test_emitted_plan_violations_and_approvals_are_catalogued if {
 worst_request := {
 	"stage": "REQUEST",
 	"principal": {"id": "dev-1", "roles": []},
-	"team": {"id": "team-locked"},
+	"team": object.union(f.team, {"id": "team-locked", "authorizedPrefixes": ["team-locked."], "quotas": {"topics": 1}}),
+	"repository": {"id": "repo-1", "ownedByTeam": false},
+	"usage": f.usage({"topics": 1}, {}, {"topics": 4}),
+	"ownership": {"resources": {"TOPIC:other.one": "repo-9"}},
 	"environment": "production",
 	"configuration": f.config,
 	"exceptions": [],
@@ -89,7 +97,10 @@ worst_request := {
 worst_plan := {
 	"stage": "ACTION_PLAN",
 	"principal": {"id": "dev-1", "roles": []},
-	"team": {"id": "team-a"},
+	"team": f.team,
+	"repository": {"id": "repo-1", "ownedByTeam": true},
+	"usage": f.usage({}, {}, {}),
+	"ownership": {"resources": {"TOPIC:team-a.big": "repo-2"}},
 	"environment": "production",
 	"configuration": f.config,
 	"exceptions": [],

@@ -13,8 +13,10 @@ import data.governance.core.exceptions
 #
 # Precedence (deterministic): HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW.
 # Hard denies are never exemptable and never approvable. Only bypassable violations can be exempted.
+# A violation or approval whose policy runs in shadow mode (configuration.enforcement[policyId] == "shadow") is
+# reported with "enforcement": "shadow" and never changes the outcome; Governance records it as a shadow finding.
 
-contract_version := "1.0"
+contract_version := "2.0"
 
 required := ["manifests", "naming", "quotas", "resources", "changes"]
 
@@ -67,7 +69,10 @@ annotate(raw, ids) := object.union(raw, {"exempted": false, "exceptionId": null}
 
 annotate(raw, ids) := object.union(raw, {"exempted": true, "exceptionId": sort(ids)[0]}) if count(ids) > 0
 
-blocking := [v | some v in all_violations; v.exempted == false]
+# A missing enforcement field counts as "enforce" so a rule that forgets it can never fail open.
+enforced(x) if object.get(x, "enforcement", "enforce") == "enforce"
+
+blocking := [v | some v in all_violations; v.exempted == false; enforced(v)]
 
 hard_denied if {
 	some v in blocking
@@ -78,6 +83,8 @@ all_approvals := [] if hard_denied
 
 all_approvals := sorted(raw_approvals) if not hard_denied
 
+effective_approvals := [a | some a in all_approvals; enforced(a)]
+
 decision := {
 	"decision": outcome,
 	"violations": all_violations,
@@ -87,6 +94,7 @@ decision := {
 	"ready": ready,
 	"bundles": bundles,
 	"revisions": revisions,
+	"contractVersion": contract_version,
 }
 
 outcome := "ERROR" if not ready
@@ -99,13 +107,13 @@ outcome := "DENY" if {
 outcome := "REQUIRE_APPROVAL" if {
 	ready
 	count(blocking) == 0
-	count(all_approvals) > 0
+	count(effective_approvals) > 0
 }
 
 outcome := "ALLOW" if {
 	ready
 	count(blocking) == 0
-	count(all_approvals) == 0
+	count(effective_approvals) == 0
 }
 
 # Revisions of every bundle OPA has loaded (empty under `opa test`).

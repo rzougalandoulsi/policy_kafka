@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://itland.com/governance/opa/input/2.0",
+  "title": "Governance OPA input, contract 2.0",
+  "description": "Document Governance POSTs to data.governance.core.decision. Everything privileged (principal, team configuration, usage, exceptions, configuration) comes from Governance's own sources, never from the client body.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "stage", "now", "principal", "team", "repository", "environment", "manifest", "actions", "plan", "usage", "ownership", "request", "configuration", "exceptions"],
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "description": "Resource counts per quota key; unknown keys are allowed so new resource types can be added without a major bump.",
+      "propertyNames": {"pattern": "^[a-zA-Z][a-zA-Z0-9]*$"},
+      "additionalProperties": {"type": "integer"}
+    },
+    "rbac": {
+      "type": "object",
+      "required": ["principal", "role", "resource"],
+      "properties": {
+        "principal": {"type": "string", "minLength": 1},
+        "role": {"type": "string", "minLength": 1},
+        "resource": {"type": "string"}
+      }
+    }
+  },
+  "properties": {
+    "contractVersion": {"type": "string", "pattern": "^2\\.[0-9]+$"},
+    "stage": {"type": "string", "enum": ["REQUEST", "ACTION_PLAN"]},
+    "now": {"type": "string", "format": "date-time", "description": "Evaluation instant supplied by Governance so time-based rules are deterministic and testable."},
+    "principal": {
+      "type": "object",
+      "required": ["id", "roles"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "roles": {"type": "array", "items": {"type": "string"}},
+        "teams": {"type": "array", "items": {"type": "string"}},
+        "environments": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "team": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "authorizedPrefixes", "quotas", "allowedRoles", "environments", "configurationVersion", "source"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "authorizedPrefixes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "quotas": {"$ref": "#/$defs/counts"},
+        "allowedRoles": {"type": "array", "items": {"type": "string"}, "description": "Empty means: the global rbac.allowedRoles / rbac.teamRoles apply."},
+        "environments": {"type": "object", "additionalProperties": {"type": "object"}},
+        "configurationVersion": {"type": "integer", "minimum": 0, "description": "0 when the team has no stored configuration (defaults apply)."},
+        "source": {"type": "string", "enum": ["governance", "external", "default"]}
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ownedByTeam"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "ownedByTeam": {"type": "boolean", "description": "false when confirmed state for this repository id exists under another team in this environment."},
+        "stateVersion": {"type": ["integer", "null"], "description": "State version of the usage snapshot Governance holds for this repository, null when none."}
+      }
+    },
+    "environment": {"type": "string", "minLength": 1},
+    "manifest": {
+      "type": "object",
+      "required": ["teamId", "repositoryId", "environment", "topics", "rbac", "identityPools"],
+      "properties": {
+        "teamId": {"type": "string"},
+        "repositoryId": {"type": "string"},
+        "environment": {"type": "string"},
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "partitions", "retentionMs", "config"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "partitions": {"type": ["integer", "null"]},
+              "retentionMs": {"type": ["integer", "null"]},
+              "config": {"type": "object", "additionalProperties": {"type": "string"}}
+            }
+          }
+        },
+        "rbac": {"type": "array", "items": {"$ref": "#/$defs/rbac"}},
+        "identityPools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "principals", "rbac"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "principals": {"type": "array", "items": {"type": "string"}},
+              "rbac": {"type": "array", "items": {"$ref": "#/$defs/rbac"}}
+            }
+          }
+        },
+        "schemas": {"type": "array"},
+        "serviceAccounts": {"type": "array"},
+        "connectors": {"type": "array"},
+        "flinkStatements": {"type": "array"}
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["actionId", "resourceType", "resourceName", "actionType", "payload"],
+        "properties": {
+          "actionId": {"type": "string"},
+          "resourceType": {"type": "string"},
+          "resourceName": {"type": "string"},
+          "actionType": {"type": "string"},
+          "payload": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "description": "Empty at stage REQUEST.",
+      "properties": {
+        "planId": {"type": "string"},
+        "planDigest": {"type": "string"},
+        "stateVersion": {"type": "integer"}
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current", "reserved", "delta", "byRepository", "asOfStateVersions"],
+      "properties": {
+        "current": {"$ref": "#/$defs/counts", "description": "Confirmed usage of the whole team in this environment (all repositories)."},
+        "reserved": {"$ref": "#/$defs/counts", "description": "Deltas of other authorised plans of the team that have not completed yet."},
+        "delta": {"$ref": "#/$defs/counts", "description": "What this request adds: at REQUEST the declared manifest minus this repository's confirmed usage, at ACTION_PLAN the sum of the planned actions."},
+        "byRepository": {"type": "object", "additionalProperties": {"$ref": "#/$defs/counts"}},
+        "asOfStateVersions": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "snapshotAge": {"type": "string", "pattern": "^P", "description": "ISO-8601 duration since the oldest repository snapshot of the team was refreshed."}
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resources"],
+      "properties": {
+        "resources": {
+          "type": "object",
+          "description": "Resources named in this request that the confirmed state attributes to another repository: \"TYPE:name\" -> owner (repositoryId, or teamId/repositoryId for another team).",
+          "propertyNames": {"pattern": "^[A-Z_]+:.+$"},
+          "additionalProperties": {"type": "string"}
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["requestId", "manifestDigest"],
+      "properties": {
+        "requestId": {"type": "string"},
+        "manifestDigest": {"type": "string"}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "required": ["naming", "rbac", "limits", "destructive", "approvals"],
+      "properties": {
+        "naming": {"type": "object"},
+        "rbac": {"type": "object"},
+        "limits": {"type": "object"},
+        "destructive": {"type": "object"},
+        "approvals": {"type": "object"},
+        "enforcement": {
+          "type": "object",
+          "description": "Per policy id: enforce (default) or shadow (recorded, never blocking).",
+          "additionalProperties": {"type": "string", "enum": ["enforce", "shadow"]}
+        }
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "policyId", "principalId", "teamId", "environment", "resourcePattern", "actionTypes"],
+        "properties": {
+          "id": {"type": "string"},
+          "policyId": {"type": "string"},
+          "principalId": {"type": "string"},
+          "teamId": {"type": "string"},
+          "environment": {"type": "string"},
+          "resourcePattern": {"type": "string"},
+          "actionTypes": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

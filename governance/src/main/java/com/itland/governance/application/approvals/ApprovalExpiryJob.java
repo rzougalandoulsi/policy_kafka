@@ -1,6 +1,7 @@
 package com.itland.governance.application.approvals;
 
 import com.itland.governance.application.audit.AuditService;
+import com.itland.governance.application.usage.QuotaReservationService;
 import com.itland.governance.configuration.Blocking;
 import com.itland.governance.domain.approval.ApprovalRequest;
 import com.itland.governance.domain.approval.ApprovalStatus;
@@ -29,15 +30,17 @@ public class ApprovalExpiryJob {
   private final ApprovalRepository approvals;
   private final ManifestRequestRepository requests;
   private final ManifestCommandPublisher publisher;
+  private final QuotaReservationService reservations;
   private final AuditService audit;
   private final Blocking blocking;
   private final Clock clock;
 
   public ApprovalExpiryJob(ApprovalRepository approvals, ManifestRequestRepository requests, ManifestCommandPublisher publisher,
-                           AuditService audit, Blocking blocking, Clock clock) {
+                           QuotaReservationService reservations, AuditService audit, Blocking blocking, Clock clock) {
     this.approvals = approvals;
     this.requests = requests;
     this.publisher = publisher;
+    this.reservations = reservations;
     this.audit = audit;
     this.blocking = blocking;
     this.clock = clock;
@@ -62,6 +65,7 @@ public class ApprovalExpiryJob {
         publisher.enqueueReject(request, a.planId(), a.planDigest(), a.decisionId(), "APPROVAL_EXPIRED", List.of());
       }
     }
+    reservations.release(request.id(), "APPROVAL_EXPIRED");
     audit.record("system", "APPROVAL_EXPIRED", "approval_request", a.id(), a.requestId(), Map.of("stage", a.stage().name()));
     log.info("Approval {} for request {} expired", a.id(), a.requestId());
   }

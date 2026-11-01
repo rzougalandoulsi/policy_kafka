@@ -21,14 +21,22 @@ violations contains h.violation("RBAC_ENV_RESTRICTED", "DENY", msg, "RBAC", key(
 	msg := sprintf("role '%s' is not permitted in environment '%s'", [b.role, h.env])
 }
 
-# RBAC_TEAM_ROLE_ALLOWED: team-specific role permissions when configured (bypassable).
+# RBAC_TEAM_ROLE_ALLOWED: team-specific role permissions when configured (bypassable). The team configuration's
+# allowedRoles (input contract 2.0) wins; an empty list falls back to configuration rbac.teamRoles[teamId].
 violations contains h.violation("RBAC_TEAM_ROLE_ALLOWED", "DENY", msg, "RBAC", key(b), true) if {
 	h.stage_request
 	some b in h.bindings
-	allowed := h.config.rbac.teamRoles[h.team_id]
+	allowed := team_allowed_roles
 	not b.role in allowed
 	not b.role in h.config.rbac.forbiddenRoles
 	msg := sprintf("team '%s' may not grant role '%s'", [h.team_id, b.role])
+}
+
+team_allowed_roles := roles if {
+	roles := object.get(input.team, "allowedRoles", [])
+	count(roles) > 0
+} else := roles if {
+	roles := h.config.rbac.teamRoles[h.team_id]
 }
 
 key(b) := sprintf("%s#%s#%s", [b.principal, b.resource, b.role])

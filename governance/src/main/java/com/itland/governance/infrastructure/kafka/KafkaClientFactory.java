@@ -47,9 +47,13 @@ public class KafkaClientFactory {
 
   /** Not a bean: the consumer is owned by the consumer thread. */
   public static KafkaConsumer<String, Object> newConsumer(GovernanceProperties.Kafka k) {
+    return newConsumer(k, k.consumerGroup());
+  }
+
+  public static KafkaConsumer<String, Object> newConsumer(GovernanceProperties.Kafka k, String groupId) {
     Map<String, Object> props = common(k);
-    props.put(ConsumerConfig.GROUP_ID_CONFIG, k.consumerGroup());
-    props.put(ConsumerConfig.CLIENT_ID_CONFIG, k.consumerGroup() + "-" + java.util.UUID.randomUUID().toString().substring(0, 8));
+    props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+    props.put(ConsumerConfig.CLIENT_ID_CONFIG, groupId + "-" + java.util.UUID.randomUUID().toString().substring(0, 8));
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class.getName());
     props.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, true);

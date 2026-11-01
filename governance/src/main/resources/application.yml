@@ -32,6 +32,10 @@ governance:
     sasl-mechanism: ${KAFKA_SASL_MECHANISM:}
     sasl-jaas-config: ${KAFKA_SASL_JAAS_CONFIG:}
     schema-registry-auth: ${SCHEMA_REGISTRY_AUTH:}
+    # Confirmed state the Orchestrator publishes (read-only for Governance): source of projected team usage.
+    repository-state-topic: teams.repo.manifest
+    usage-consumer-group: ${GOVERNANCE_USAGE_CONSUMER_GROUP:governance-usage}
+    usage-consumer-enabled: ${GOVERNANCE_USAGE_CONSUMER_ENABLED:true}
   opa:
     url: ${OPA_URL:http://localhost:8181}
     decision-path: /v1/data/governance/core/decision
@@ -46,6 +50,9 @@ governance:
     verify-revision: true
     bundle-token: ${OPA_BUNDLE_TOKEN:}
     revision-check-interval: 15s
+    # Input contract OpaInputAssembler produces, and the core contract majors this build accepts in decisions.
+    contract-version: "2.0"
+    supported-contract-majors: 1,2
   security:
     issuer-uri: ${OAUTH2_ISSUER_URI:http://localhost:8089/default}
     teams-claim: ${OAUTH2_TEAMS_CLAIM:teams}
@@ -67,6 +74,10 @@ governance:
   inbox:
     poll-records: 200
     retry-poll-interval: 5s
+  usage:
+    # Stage 2 waits (ERROR + inbox retry) until the confirmed state the plan was computed against has been consumed.
+    require-fresh-snapshot: ${GOVERNANCE_USAGE_REQUIRE_FRESH_SNAPSHOT:true}
+    reservation-sweep-interval: 30s
 
 management:
   endpoints:

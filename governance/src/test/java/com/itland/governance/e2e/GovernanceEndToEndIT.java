@@ -97,8 +97,39 @@ class GovernanceEndToEndIT {
   // ---------------------------------------------------------------- helpers
 
   static Map<String, Object> manifest(String env, List<Map<String, Object>> topics, List<Map<String, Object>> rbac) {
-    return Map.of("teamId", "team-a", "repositoryId", "repo-1", "environment", env,
+    return manifest("repo-1", env, topics, rbac);
+  }
+
+  static Map<String, Object> manifest(String repository, String env, List<Map<String, Object>> topics, List<Map<String, Object>> rbac) {
+    return Map.of("teamId", "team-a", "repositoryId", repository, "environment", env,
         "resources", Map.of("topics", topics, "rbac", rbac, "identityPools", List.of()));
+  }
+
+  @SuppressWarnings("unchecked")
+  Map<String, Object> configureTeam(List<String> prefixes, Map<String, Object> quotas, String comment) {
+    return client.put().uri("/api/v1/admin/teams/team-a").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("authorizedPrefixes", prefixes, "quotas", quotas, "allowedRoles", List.of(), "environments", Map.of(), "comment", comment))
+        .exchange().expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
+  }
+
+  @SuppressWarnings("unchecked")
+  Map<String, Object> teamUsage() {
+    return client.get().uri("/api/v1/admin/teams/team-a/usage").header("Authorization", "Bearer " + AUDITOR).exchange()
+        .expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
+  }
+
+  @SuppressWarnings("unchecked")
+  Map<String, Object> activeConfigurationContent() {
+    List<Map<String, Object>> versions = client.get().uri("/api/v1/admin/policy-configurations").header("Authorization", "Bearer " + ADMIN).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    return new java.util.HashMap<>((Map<String, Object>) versions.stream().filter(v -> "ACTIVE".equals(v.get("status"))).findFirst().orElseThrow().get("content"));
+  }
+
+  @SuppressWarnings("unchecked")
+  void activateConfiguration(Map<String, Object> content, String comment) {
+    Map<String, Object> draft = client.post().uri("/api/v1/admin/policy-configurations").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("content", content, "comment", comment)).exchange().expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
+    client.post().uri("/api/v1/admin/policy-configurations/" + draft.get("id") + "/activate").header("Authorization", "Bearer " + ADMIN).exchange().expectStatus().isOk();
   }
 
   static Map<String, Object> topic(String name, int partitions) {
@@ -231,7 +262,8 @@ class GovernanceEndToEndIT {
         .expectStatus().isEqualTo(422)
         .expectBody()
         .jsonPath("$.status").isEqualTo("REJECTED")
-        .jsonPath("$.violations[0].policyId").isEqualTo("TEAM_PREFIX_REQUIRED")
+        .jsonPath("$.violations[0].policyId").isEqualTo("AUTHORIZED_PREFIX_REQUIRED")
+        .jsonPath("$.violations[0].enforcement").isEqualTo("enforce")
         .jsonPath("$.violations[0].bypassable").isEqualTo(true);
   }
 
@@ -302,7 +334,7 @@ class GovernanceEndToEndIT {
   @SuppressWarnings("unchecked")
   void scopedExceptionExemptsBypassablePolicyAndRevocationRemovesIt() {
     Map<String, Object> created = client.post().uri("/api/v1/admin/exceptions").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
-        .bodyValue(Map.of("policyId", "TEAM_PREFIX_REQUIRED", "principalId", "dev-1", "teamId", "team-a", "environment", "development",
+        .bodyValue(Map.of("policyId", "AUTHORIZED_PREFIX_REQUIRED", "principalId", "dev-1", "teamId", "team-a", "environment", "development",
             "resourcePattern", "legacy.*", "expiresAt", Instant.now().plus(Duration.ofDays(1)).toString(), "reason", "migration"))
         .exchange().expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
     String exceptionId = (String) created.get("id");
@@ -484,11 +516,12 @@ class GovernanceEndToEndIT {
     client.get().uri("/api/v1/admin/policies").header("Authorization", "Bearer " + DEV).exchange().expectStatus().isForbidden();
     List<Map<String, Object>> catalogue = client.get().uri("/api/v1/admin/policies").header("Authorization", "Bearer " + AUDITOR).exchange()
         .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
-    assertThat(catalogue).hasSize(17);
+    assertThat(catalogue).hasSize(20);
     assertThat(catalogue).allSatisfy(p -> assertThat(p.get("bundle")).isIn("core", "manifests", "naming", "quotas", "resources", "changes"));
     Map<String, Object> hardDeny = catalogue.stream().filter(p -> "RBAC_ADMIN_ROLE_FORBIDDEN".equals(p.get("policyId"))).findFirst().orElseThrow();
     assertThat(hardDeny).containsEntry("severity", "HARD_DENY").containsEntry("bypassable", false);
-    assertThat(catalogue.stream().filter(p -> Boolean.TRUE.equals(p.get("bypassable"))).count()).isEqualTo(13);
+    assertThat(catalogue.stream().filter(p -> Boolean.TRUE.equals(p.get("bypassable"))).count()).isEqualTo(16);
+    assertThat(catalogue).extracting(p -> (String) p.get("policyId")).contains("AUTHORIZED_PREFIX_REQUIRED", "TEAM_QUOTA_EXCEEDED", "RESOURCE_OWNED_BY_OTHER_REPOSITORY").doesNotContain("TEAM_PREFIX_REQUIRED");
   }
 
   @Test
@@ -498,6 +531,7 @@ class GovernanceEndToEndIT {
     String prometheus = client.get().uri("/actuator/prometheus").exchange().expectStatus().isOk().expectBody(String.class).returnResult().getResponseBody();
     assertThat(prometheus).contains("governance_opa_evaluation_seconds").contains("governance_decisions_total")
         .contains("governance_outbox_pending").contains("governance_approvals_pending").contains("governance_policy_revision_match")
+        .contains("governance_usage_snapshots_total").contains("governance_quota_reservations_open")
         .contains("kafka_consumer_");
   }
 
@@ -521,5 +555,160 @@ class GovernanceEndToEndIT {
     awaitRelease(v1);
     submit(DEV, manifest("development", List.of(topic("team-a.orders", 6), topic("team-a.payments", 3), topic("team-a.audit", 1)), List.of()), "recovered-" + UUID.randomUUID())
         .expectStatus().isAccepted();
+  }
+
+  // ---------------------------------------------------------------- phase 2: team configuration, usage, quotas, shadow mode
+
+  @Test
+  @Order(19)
+  @SuppressWarnings("unchecked")
+  void teamQuotaIsEnforcedJointlyAcrossRepositoriesFromConsumedUsage() {
+    // The usage consumer has turned the Orchestrator's confirmed state (teams.repo.manifest) into a per-repository snapshot.
+    await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+      List<Map<String, Object>> repos = (List<Map<String, Object>>) teamUsage().get("repositories");
+      Map<String, Object> dev = repos.stream().filter(r -> "repo-1".equals(r.get("repositoryId")) && "development".equals(r.get("environment"))).findFirst().orElseThrow();
+      assertThat(((Number) dev.get("stateVersion")).longValue()).isGreaterThanOrEqualTo(1L);
+      assertThat((List<String>) dev.get("topics")).containsExactlyInAnyOrder("team-a.orders", "team-a.payments", "team-a.audit");
+      assertThat(((Map<String, Number>) dev.get("counts")).get("topics").intValue()).isEqualTo(3);
+      assertThat(((Map<String, Number>) dev.get("counts")).get("topicPartitions").intValue()).isEqualTo(10); // 6 + 3 + 1 as declared
+    });
+
+    // Role boundaries: readers see, only admins write.
+    client.get().uri("/api/v1/admin/teams/team-a").header("Authorization", "Bearer " + DEV).exchange().expectStatus().isForbidden();
+    client.put().uri("/api/v1/admin/teams/team-a").header("Authorization", "Bearer " + AUDITOR).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("authorizedPrefixes", List.of("team-a."))).exchange().expectStatus().isForbidden();
+    client.get().uri("/api/v1/admin/teams/team-a").header("Authorization", "Bearer " + AUDITOR).exchange().expectStatus().isOk()
+        .expectBody().jsonPath("$.source").isEqualTo("default").jsonPath("$.version").isEqualTo(0).jsonPath("$.authorizedPrefixes[0]").isEqualTo("team-a.");
+    client.put().uri("/api/v1/admin/teams/team-a").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("authorizedPrefixes", List.of("team-a."), "quotas", Map.of("partitions", 1))).exchange().expectStatus().isBadRequest();
+
+    // Quota of 4 topics for the whole team: repo-1 already holds 3, so repo-2 may add one topic but not two.
+    Map<String, Object> created = configureTeam(List.of("team-a."), Map.of("topics", 4), "quota for the IT");
+    assertThat(created).containsEntry("version", 1).containsEntry("source", "governance");
+    submit(DEV, manifest("repo-2", "development", List.of(topic("team-a.repo2.events", 1), topic("team-a.repo2.audit", 1)), List.of()), "quota-" + UUID.randomUUID())
+        .expectStatus().isEqualTo(422)
+        .expectBody().jsonPath("$.violations[0].policyId").isEqualTo("TEAM_QUOTA_EXCEEDED")
+        .jsonPath("$.violations[0].resourceName").isEqualTo("topics")
+        .jsonPath("$.violations[0].message").value(m -> assertThat((String) m).contains("would use 5 topics").contains("quota is 4"));
+    String repo2 = (String) submitAccepted(DEV, manifest("repo-2", "development", List.of(topic("team-a.repo2.events", 1)), List.of())).get("requestId");
+    awaitStatus(repo2, "COMPLETED");
+
+    // repo-2 took the last slot: repo-1 can no longer grow, until an admin raises the quota (no restart involved).
+    Map<String, Object> grown = manifest("development", List.of(topic("team-a.orders", 6), topic("team-a.payments", 3), topic("team-a.audit", 1), topic("team-a.extra", 1)), List.of());
+    await().atMost(Duration.ofSeconds(30)).untilAsserted(() ->
+        submit(DEV, grown, "quota-full-" + UUID.randomUUID()).expectStatus().isEqualTo(422).expectBody().jsonPath("$.violations[0].policyId").isEqualTo("TEAM_QUOTA_EXCEEDED"));
+    assertThat(configureTeam(List.of("team-a."), Map.of("topics", 5), "one more")).containsEntry("version", 2);
+    awaitStatus((String) submitAccepted(DEV, grown).get("requestId"), "COMPLETED");
+
+    List<Map<String, Object>> history = client.get().uri("/api/v1/admin/teams/team-a/history").header("Authorization", "Bearer " + AUDITOR).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    assertThat(history).extracting(h -> (String) h.get("action")).containsExactly("UPDATED", "CREATED");
+    List<Map<String, Object>> audit = client.get().uri("/api/v1/admin/audit?targetType=team_configuration&targetId=team-a").header("Authorization", "Bearer " + AUDITOR).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    assertThat(audit).extracting(a -> (String) a.get("action")).contains("TEAM_CONFIGURATION_CREATED", "TEAM_CONFIGURATION_UPDATED");
+  }
+
+  @Test
+  @Order(20)
+  @SuppressWarnings("unchecked")
+  void authorizedPrefixChangeAppliesToTheNextEvaluationWithoutRestart() {
+    configureTeam(List.of("team-a.", "shared."), Map.of(), "shared topics allowed");
+    String requestId = (String) submitAccepted(DEV, manifest("repo-3", "development", List.of(topic("shared.events", 1)), List.of())).get("requestId");
+    awaitStatus(requestId, "COMPLETED");
+    assertThat((List<String>) decisions(requestId).get(0).get("matchedPolicies")).isEmpty();
+
+    configureTeam(List.of("team-a."), Map.of(), "shared topics withdrawn");
+    submit(DEV, manifest("repo-3", "development", List.of(topic("shared.events", 1), topic("shared.more", 1)), List.of()), "prefix-" + UUID.randomUUID())
+        .expectStatus().isEqualTo(422)
+        .expectBody().jsonPath("$.violations[0].policyId").isEqualTo("AUTHORIZED_PREFIX_REQUIRED")
+        .jsonPath("$.violations[0].message").value(m -> assertThat((String) m).contains("team-a."));
+    client.get().uri("/api/v1/admin/teams").header("Authorization", "Bearer " + AUDITOR).exchange().expectStatus().isOk()
+        .expectBody().jsonPath("$[0].teamId").isEqualTo("team-a").jsonPath("$[0].version").isEqualTo(4);
+  }
+
+  @Test
+  @Order(21)
+  @SuppressWarnings("unchecked")
+  void shadowPoliciesNeverBlockButAreRecordedAsFindings() {
+    Map<String, Object> content = activeConfigurationContent();
+    content.put("enforcement", Map.of("AUTHORIZED_PREFIX_REQUIRED", "shadow"));
+    activateConfiguration(content, "prefix rule in shadow mode");
+    client.post().uri("/api/v1/admin/policy-configurations").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("content", withEnforcement(content, Map.of("AUTHORIZED_PREFIX_REQUIRED", "audit")), "comment", "bad mode")).exchange().expectStatus().isBadRequest();
+
+    Map<String, Object> unprefixed = manifest("repo-3", "development", List.of(topic("shared.events", 1), topic("other.thing", 1)), List.of());
+    String requestId = (String) submitAccepted(DEV, unprefixed).get("requestId");
+    awaitStatus(requestId, "COMPLETED");
+    Map<String, Object> stage1 = decisions(requestId).get(0);
+    assertThat(stage1).containsEntry("type", "ALLOW");
+    List<Map<String, Object>> violations = (List<Map<String, Object>>) stage1.get("violations");
+    assertThat(violations).hasSize(2).allSatisfy(v -> assertThat(v).containsEntry("policyId", "AUTHORIZED_PREFIX_REQUIRED").containsEntry("enforcement", "shadow").containsEntry("exempted", false));
+
+    client.get().uri("/api/v1/admin/shadow-findings").header("Authorization", "Bearer " + DEV).exchange().expectStatus().isForbidden();
+    List<Map<String, Object>> findings = client.get().uri("/api/v1/admin/shadow-findings?policyId=AUTHORIZED_PREFIX_REQUIRED&teamId=team-a").header("Authorization", "Bearer " + AUDITOR).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    assertThat(findings.stream().filter(f -> requestId.equals(f.get("requestId")))).hasSize(2)
+        .allSatisfy(f -> assertThat(f).containsEntry("kind", "VIOLATION").containsEntry("stage", "REQUEST").containsEntry("environment", "development"));
+    String prometheus = client.get().uri("/actuator/prometheus").exchange().expectStatus().isOk().expectBody(String.class).returnResult().getResponseBody();
+    assertThat(prometheus).contains("governance_shadow_findings_total{kind=\"VIOLATION\",policyId=\"AUTHORIZED_PREFIX_REQUIRED\"");
+
+    client.post().uri("/api/v1/admin/policy-configurations/rollback").header("Authorization", "Bearer " + ADMIN).exchange().expectStatus().isOk();
+    submit(DEV, unprefixed, "enforced-again-" + UUID.randomUUID()).expectStatus().isEqualTo(422);
+  }
+
+  private static Map<String, Object> withEnforcement(Map<String, Object> content, Map<String, Object> enforcement) {
+    Map<String, Object> copy = new java.util.HashMap<>(content);
+    copy.put("enforcement", enforcement);
+    return copy;
+  }
+
+  @Test
+  @Order(22)
+  @SuppressWarnings("unchecked")
+  void concurrentApprovalsOfOneTeamAdmitExactlyOnePlanWithinTheQuota() throws Exception {
+    // 128 partitions per team in production; each plan creates 128 (2 x 64) and needs approval (high impact threshold 128).
+    configureTeam(List.of("team-a."), Map.of("topicPartitions", 128), "partition budget");
+    String first = (String) submitAccepted(DEV, manifest("repo-p1", "production", List.of(topic("team-a.p1.a", 64), topic("team-a.p1.b", 64)), List.of())).get("requestId");
+    String second = (String) submitAccepted(DEV, manifest("repo-p2", "production", List.of(topic("team-a.p2.a", 64), topic("team-a.p2.b", 64)), List.of())).get("requestId");
+    awaitStatus(first, "PENDING_APPROVAL_STAGE2");
+    awaitStatus(second, "PENDING_APPROVAL_STAGE2");
+    List<Map<String, Object>> pending = client.get().uri("/api/v1/approvals?status=PENDING").header("Authorization", "Bearer " + APPROVER).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    String approvalFirst = (String) pending.stream().filter(a -> first.equals(a.get("requestId"))).findFirst().orElseThrow().get("id");
+    String approvalSecond = (String) pending.stream().filter(a -> second.equals(a.get("requestId"))).findFirst().orElseThrow().get("id");
+
+    java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+    java.util.function.Function<String, java.util.concurrent.CompletableFuture<String>> approve = id -> java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+      try { go.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+      Map<String, Object> body = client.post().uri("/api/v1/approvals/" + id + "/decisions").header("Authorization", "Bearer " + APPROVER)
+          .contentType(MediaType.APPLICATION_JSON).bodyValue(Map.of("verdict", "APPROVE", "comment", "race")).exchange()
+          .expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
+      return (String) body.get("requestStatus");
+    });
+    var a = approve.apply(approvalFirst);
+    var b = approve.apply(approvalSecond);
+    go.countDown();
+    List<String> outcomes = List.of(a.get(60, java.util.concurrent.TimeUnit.SECONDS), b.get(60, java.util.concurrent.TimeUnit.SECONDS));
+    assertThat(outcomes).containsExactlyInAnyOrder("PLAN_AUTHORIZED", "PLAN_REJECTED");
+
+    String admitted = "PLAN_AUTHORIZED".equals(outcomes.get(0)) ? first : second;
+    String refused = admitted.equals(first) ? second : first;
+    awaitStatus(admitted, "COMPLETED");
+    List<Map<String, Object>> refusedDecisions = decisions(refused);
+    Map<String, Object> last = refusedDecisions.get(refusedDecisions.size() - 1);
+    assertThat(last).containsEntry("type", "DENY");
+    assertThat((List<Map<String, Object>>) last.get("violations")).anySatisfy(v -> assertThat(v).containsEntry("policyId", "TEAM_QUOTA_EXCEEDED").containsEntry("resourceName", "topicPartitions"));
+    assertThat(request(DEV, refused)).containsEntry("status", "PLAN_REJECTED");
+
+    // The admitted plan's reservation was released on completion; the confirmed usage now carries the 128 partitions.
+    await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+      Map<String, Object> usage = teamUsage();
+      assertThat((List<?>) usage.get("reservations")).isEmpty();
+      Map<String, Map<String, Number>> current = (Map<String, Map<String, Number>>) usage.get("currentByEnvironment");
+      assertThat(current.get("production").get("topicPartitions").intValue()).isEqualTo(128);
+    });
+    List<Map<String, Object>> audit = client.get().uri("/api/v1/admin/audit?requestId=" + refused).header("Authorization", "Bearer " + AUDITOR).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    assertThat(audit).extracting(a2 -> (String) a2.get("action")).contains("APPROVAL_RELEASE_STAGE2");
   }
 }

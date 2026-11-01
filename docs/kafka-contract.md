@@ -46,6 +46,10 @@ Authorization responses must reach the owner of the pending plan. Required desig
 - The Orchestrator must treat a duplicate `AUTHORIZE_PLAN` as a no-op (plan already released); the stand-in does.
 - Existing topics (`teams.changes`, `request.status`, `teams.repo.manifest`) keep their contracts; only additive, defaulted fields were added (`EndOfBatch.requestId/planId/teamId/repoId/environment`, `RepoConfirmed.stateVersion/environment`, `RepoDesired.environment/topics/identityPools/rbacs`).
 
+## Confirmed state read by Governance
+
+`teams.repo.manifest` (compacted, `RepoConfirmed`, keyed `teamId|repoId|environment` per ADR 0005) is written by the Orchestrator after every reconcile and **read, never written,** by Governance (consumer group `governance-usage`). It feeds `repository_usage`, the source of projected team usage (`input.usage`) and cross-repository ownership checks (`input.ownership`) in input contract 2.0 (ADR 0010). `RepoConfirmed` carries topic names only; Governance derives partitions from the last manifest it saw complete for the repository. The stand-in publishes the record just before the terminal event, as the real Orchestrator does.
+
 ## ACLs (deploy/kafka/acls.sh)
 
-Only `User:governance` may write `requests.manifest`; only `User:orchestrator` may write `response.manifest`; the Processor principal can read `teams.changes` and write `request.status` only.
+Only `User:governance` may write `requests.manifest`; only `User:orchestrator` may write `response.manifest` and `teams.repo.manifest`; Governance may read `teams.repo.manifest` (groups `governance`, `governance-usage`); the Processor principal can read `teams.changes` and write `request.status` only.

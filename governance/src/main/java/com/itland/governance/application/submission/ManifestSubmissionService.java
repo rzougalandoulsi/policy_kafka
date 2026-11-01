@@ -129,7 +129,7 @@ public class ManifestSubmissionService {
     }
     String reason = switch (decision.type()) {
       case DENY -> "Denied by policy: " + decision.blockingViolations().stream().map(v -> v.policyId()).distinct().toList();
-      case REQUIRE_APPROVAL -> "Approval required: " + decision.approvalRequirements().stream().map(a -> a.policyId()).distinct().toList();
+      case REQUIRE_APPROVAL -> "Approval required: " + decision.enforcedApprovals().stream().map(a -> a.policyId()).distinct().toList();
       case ALLOW -> "Stage 1 allowed; submitted to orchestrator";
       case ERROR -> decision.errorMessage();
     };
@@ -138,12 +138,13 @@ public class ManifestSubmissionService {
     }
     switch (decision.type()) {
       case ALLOW -> publisher.enqueueSubmit(request);
-      case REQUIRE_APPROVAL -> approvals.open(request, decision, GovernanceStage.REQUEST, decision.approvalRequirements(), request.manifestDigest(), null, null);
+      case REQUIRE_APPROVAL -> approvals.open(request, decision, GovernanceStage.REQUEST, decision.enforcedApprovals(), request.manifestDigest(), null, null);
       default -> { }
     }
     audit.record(caller.principalId(), "STAGE1_DECISION", "manifest_request", requestId, requestId,
         Map.of("decisionId", decision.id(), "type", decision.type().name(), "policyRevision", decision.policyRevision(),
-            "configurationVersion", decision.configurationVersion(), "violations", decision.violations().size()));
+            "configurationVersion", decision.configurationVersion(), "violations", decision.violations().size(),
+            "shadowFindings", decision.shadowViolations().size() + decision.shadowApprovals().size()));
     return new Outcome(requests.findById(requestId).orElseThrow(), decision, false);
   }
 

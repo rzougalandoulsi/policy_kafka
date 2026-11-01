@@ -12,7 +12,8 @@ import java.util.Set;
 /**
  * Deterministic aggregation of OPA output. Precedence: hard deny > deny > approval required > allow.
  * A hard-deny violation can never be exempted or approved around; only bypassable policies honour
- * exceptions. The Java aggregate is compared with OPA's own "decision" field as a consistency check.
+ * exceptions. Findings of policies in shadow mode are kept (for the record) but never block and never
+ * require an approval. The Java aggregate is compared with OPA's own "decision" field as a consistency check.
  */
 public final class DecisionAggregator {
 
@@ -27,14 +28,14 @@ public final class DecisionAggregator {
         .sorted(Comparator.comparing(PolicyViolation::policyId).thenComparing(PolicyViolation::resourceName, Comparator.nullsFirst(String::compareTo)))
         .toList();
     List<ApprovalRequirement> approvals = result.approvals().stream()
-        .map(a -> new ApprovalRequirement(a.policyId(), a.message(), a.resourceType(), a.resourceName()))
+        .map(a -> new ApprovalRequirement(a.policyId(), a.message(), a.resourceType(), a.resourceName(), a.enforcement()))
         .sorted(Comparator.comparing(ApprovalRequirement::policyId).thenComparing(ApprovalRequirement::resourceName, Comparator.nullsFirst(String::compareTo)))
         .toList();
 
     DecisionType type;
     if (violations.stream().anyMatch(PolicyViolation::blocking)) {
       type = DecisionType.DENY;
-    } else if (!approvals.isEmpty()) {
+    } else if (approvals.stream().anyMatch(a -> !a.shadow())) {
       type = DecisionType.REQUIRE_APPROVAL;
     } else {
       type = DecisionType.ALLOW;
@@ -51,6 +52,6 @@ public final class DecisionAggregator {
     boolean exempted = bypassable && Boolean.TRUE.equals(v.exempted()) && v.exceptionId() != null && knownExceptionIds.contains(v.exceptionId());
     return new PolicyViolation(v.policyId(), hard ? PolicyViolation.HARD_DENY : PolicyViolation.DENY, v.message(),
         v.resourceType() == null ? "" : v.resourceType(), v.resourceName() == null ? "" : v.resourceName(),
-        bypassable, exempted, exempted ? v.exceptionId() : null);
+        bypassable, exempted, exempted ? v.exceptionId() : null, v.enforcement());
   }
 }

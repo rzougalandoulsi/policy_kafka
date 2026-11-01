@@ -75,6 +75,11 @@ public class ApiExceptionHandler {
         .body(ApiError.of("POLICY_ENGINE_UNAVAILABLE", "The policy engine could not answer: " + e.getMessage()));
   }
 
+  @ExceptionHandler(com.itland.governance.application.teams.TeamConfigurationService.ExternallyManagedException.class)
+  public ResponseEntity<ApiError> externallyManaged(com.itland.governance.application.teams.TeamConfigurationService.ExternallyManagedException e) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("TEAM_CONFIGURATION_EXTERNAL", e.getMessage()));
+  }
+
   @ExceptionHandler(IllegalStateException.class)
   public ResponseEntity<ApiError> conflict(IllegalStateException e) {
     log.warn("State conflict: {}", e.getMessage());

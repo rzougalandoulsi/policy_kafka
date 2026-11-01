@@ -28,12 +28,13 @@ test_incompatible_contract_major_is_not_ready if {
 }
 
 test_minor_contract_difference_is_compatible if {
-	core.ready with data.governance.resources.contract_version as "1.7"
+	core.ready with data.governance.resources.contract_version as "2.7"
 }
 
 test_clean_manifest_allows_when_ready if {
 	d := core.decision with input as f.request("development", [f.topic("team-a.orders", 6)], [])
 	d.decision == "ALLOW"
 	d.ready == true
-	d.bundles.naming == "1.0"
+	d.bundles.naming == "2.0"
+	d.contractVersion == "2.0"
 }

@@ -8,8 +8,10 @@ the only enforcement point. There is no UI-specific backend state.
 | Area | Page | API used |
 |---|---|---|
 | Overview | `/` | active configuration/bundle/approval rule, `policy-bundles/diagnostics`, exceptions expiring soon, open dead letters, last audit entries |
+| Teams | `/teams`, `/teams/{teamId}` | `GET/PUT/DELETE /api/v1/admin/teams/{teamId}`, `/history`, `/usage`: authorised prefixes, quotas, allowed roles, source badge; capacity per environment (confirmed, reserved, headroom), repositories, open reservations, history, audit |
+| Shadow findings | `/shadow-findings` | `GET /api/v1/admin/shadow-findings` filtered by policy, team, environment; per-policy summary |
 | Scoped exceptions | `/exceptions`, `/exceptions/{id}` | `GET/POST/DELETE /api/v1/admin/exceptions`, `GET /api/v1/admin/policies` (catalogue), `GET /api/v1/admin/audit?targetType=policy_exception` |
-| Policy configuration (governance rules) | `/policy-configurations`, `/new`, `/{id}` | `GET/POST /api/v1/admin/policy-configurations`, `/{id}/activate`, `/rollback` |
+| Policy configuration (governance rules) | `/policy-configurations`, `/new`, `/{id}` | `GET/POST /api/v1/admin/policy-configurations`, `/{id}/activate`, `/rollback`; the editor has an `enforcement` tab to put a policy in shadow mode |
 | Policy bundles (Rego) | `/policy-bundles` | `GET/POST /api/v1/admin/policy-bundles`, `/{id}/activate`, `/rollback`, `/diagnostics` |
 | Approval rules | `/approval-rules` | `GET/POST /api/v1/admin/approval-configurations`, `/{id}/activate` |
 | Audit and dead letters | `/audit` | `GET /api/v1/admin/audit`, `GET /api/v1/admin/dead-letters`, `POST /dead-letters/{id}/resolve` |

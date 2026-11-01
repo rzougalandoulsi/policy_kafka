@@ -13,7 +13,13 @@ import type {
   PolicyException,
   PolicyReleaseActivation,
   RevisionDiagnostics,
+  ShadowFinding,
+  ShadowFindingQuery,
+  TeamConfiguration,
+  TeamConfigurationChange,
+  TeamUsage,
   UploadBundleBody,
+  UpsertTeamBody,
 } from './types';
 
 const ADMIN = '/api/v1/admin';
@@ -84,4 +90,20 @@ export const auditApi = {
 
 export const catalogApi = {
   list: () => apiFetch<CatalogPolicy[]>(`${ADMIN}/policies`),
+};
+
+export const teamsApi = {
+  list: () => apiFetch<TeamConfiguration[]>(`${ADMIN}/teams`),
+  get: (teamId: string) => apiFetch<TeamConfiguration>(`${ADMIN}/teams/${encodeURIComponent(teamId)}`),
+  upsert: (teamId: string, body: UpsertTeamBody) =>
+    apiFetch<TeamConfiguration>(`${ADMIN}/teams/${encodeURIComponent(teamId)}`, { method: 'PUT', body }),
+  remove: (teamId: string) =>
+    apiFetch<TeamConfiguration>(`${ADMIN}/teams/${encodeURIComponent(teamId)}`, { method: 'DELETE' }),
+  history: (teamId: string) =>
+    apiFetch<TeamConfigurationChange[]>(`${ADMIN}/teams/${encodeURIComponent(teamId)}/history`),
+  usage: (teamId: string) => apiFetch<TeamUsage>(`${ADMIN}/teams/${encodeURIComponent(teamId)}/usage`),
+};
+
+export const shadowApi = {
+  list: (q: ShadowFindingQuery = {}) => apiFetch<ShadowFinding[]>(`${ADMIN}/shadow-findings`, { query: { ...q } }),
 };

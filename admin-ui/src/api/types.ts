@@ -58,7 +58,11 @@ export interface PolicyConfiguration {
 }
 
 /** Shape seeded by V2__policy_management.sql; validated by PolicyConfigurationService.validate. */
+export type EnforcementMode = 'enforce' | 'shadow';
+
 export interface PolicyConfigurationContent {
+  /** Per policy id: enforce (default) or shadow (recorded as a finding, never blocking). */
+  enforcement?: Record<string, EnforcementMode>;
   naming: {
     topicPattern: string;
     requireTeamPrefix: boolean;
@@ -232,7 +236,7 @@ export interface CatalogPolicy {
   /** bundle that declares the policy (core, naming, ...) */
   bundle?: string;
   kind: 'VIOLATION' | 'APPROVAL';
-  section: 'naming' | 'rbac' | 'limits' | 'destructive' | 'approvals';
+  section: 'naming' | 'rbac' | 'limits' | 'destructive' | 'approvals' | 'manifests';
   severity: 'HARD_DENY' | 'DENY' | 'REQUIRE_APPROVAL';
   bypassable: boolean;
   stages: Array<'REQUEST' | 'ACTION_PLAN'>;
@@ -255,8 +259,125 @@ export const AUDIT_TARGET_TYPES = [
   'policy_exception',
   'policy_configuration',
   'policy_bundle',
+  'policy_release',
   'approval_configuration',
   'approval_request',
   'manifest_request',
+  'team_configuration',
   'kafka_dead_letter',
 ] as const;
+
+// ---------------------------------------------------------------- team configuration, usage, shadow findings (input contract 2.0)
+
+/** TeamConfiguration.QUOTA_KEYS: the usage counters and quota keys of input contract 2.0, in display order. */
+export const QUOTA_KEYS = [
+  'topics',
+  'topicPartitions',
+  'identityPools',
+  'rbacBindings',
+  'schemas',
+  'serviceAccounts',
+  'connectors',
+  'flinkStatements',
+] as const;
+export type QuotaKey = (typeof QUOTA_KEYS)[number];
+
+/** Quota keys the current contracts actually count; the others stay 0 until the resource types exist (plan phase 6). */
+export const COUNTED_QUOTA_KEYS: readonly QuotaKey[] = ['topics', 'topicPartitions', 'identityPools', 'rbacBindings'];
+
+export type TeamSource = 'governance' | 'external' | 'default';
+
+/** domain/team/TeamConfiguration.java; source=default (version 0) is what a team without a stored row evaluates against. */
+export interface TeamConfiguration {
+  teamId: string;
+  version: number;
+  authorizedPrefixes: string[];
+  quotas: Partial<Record<QuotaKey, number>>;
+  allowedRoles: string[];
+  environments: Record<string, Record<string, unknown>>;
+  source: TeamSource;
+  sourceVersion: string | null;
+  syncedAt: string | null;
+  comment: string | null;
+  updatedBy: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+/** TeamConfigurationAdminController.UpsertBody */
+export interface UpsertTeamBody {
+  authorizedPrefixes: string[];
+  quotas: Partial<Record<QuotaKey, number>>;
+  allowedRoles: string[];
+  environments: Record<string, Record<string, unknown>>;
+  source: 'governance' | 'external';
+  sourceVersion?: string | null;
+  comment?: string | null;
+}
+
+/** domain/team/TeamConfigurationChange.java */
+export interface TeamConfigurationChange {
+  id: number;
+  teamId: string;
+  version: number;
+  content: Record<string, unknown>;
+  action: 'CREATED' | 'UPDATED' | 'DELETED';
+  changedBy: string;
+  changedAt: string;
+  comment: string | null;
+}
+
+/** TeamConfigurationService.TeamUsage */
+export interface TeamUsage {
+  teamId: string;
+  currentByEnvironment: Record<string, Partial<Record<QuotaKey, number>>>;
+  reservedByEnvironment: Record<string, Partial<Record<QuotaKey, number>>>;
+  repositories: Array<{
+    repositoryId: string;
+    environment: string;
+    /** -1 until a confirmed snapshot was consumed from teams.repo.manifest */
+    stateVersion: number;
+    counts: Partial<Record<QuotaKey, number>>;
+    topics: string[];
+    identityPools: string[];
+    rbacBindings: string[];
+    snapshotAt: string | null;
+  }>;
+  reservations: Array<{
+    id: string;
+    environment: string;
+    requestId: string;
+    planId: string;
+    deltas: Partial<Record<QuotaKey, number>>;
+    createdAt: string;
+    expiresAt: string;
+  }>;
+}
+
+/** ShadowFindingRepository.ShadowFinding */
+export interface ShadowFinding {
+  id: number;
+  decisionId: string;
+  requestId: string;
+  planId: string | null;
+  stage: 'REQUEST' | 'ACTION_PLAN';
+  kind: 'VIOLATION' | 'APPROVAL';
+  policyId: string;
+  severity: string;
+  message: string | null;
+  resourceType: string | null;
+  resourceName: string | null;
+  recordedAt: string;
+  teamId: string;
+  repositoryId: string;
+  environment: string;
+  principalId: string;
+}
+
+export interface ShadowFindingQuery {
+  policyId?: string;
+  teamId?: string;
+  environment?: string;
+  since?: string;
+  limit?: number;
+}

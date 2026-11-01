@@ -3,6 +3,9 @@ package com.itland.governance.application.lifecycle;
 import com.itland.governance.application.approvals.ApprovalService;
 import com.itland.governance.application.audit.AuditService;
 import com.itland.governance.application.evaluation.PolicyEvaluationService;
+import com.itland.governance.application.usage.QuotaReservationService;
+import com.itland.governance.application.usage.UsageMath;
+import com.itland.governance.infrastructure.persistence.RepositoryUsageRepository;
 import com.itland.governance.domain.decision.DecisionType;
 import com.itland.governance.domain.decision.GovernanceDecision;
 import com.itland.governance.domain.decision.GovernanceStage;
@@ -59,18 +62,22 @@ public class ManifestEventHandler {
   private final PolicyEvaluationService evaluation;
   private final ApprovalService approvals;
   private final ManifestCommandPublisher publisher;
+  private final QuotaReservationService reservations;
+  private final RepositoryUsageRepository usage;
   private final AuditService audit;
   private final Clock clock;
 
   public ManifestEventHandler(ManifestRequestRepository requests, ProposedPlanRepository plans, DecisionRepository decisions,
                               PolicyEvaluationService evaluation, ApprovalService approvals, ManifestCommandPublisher publisher,
-                              AuditService audit, Clock clock) {
+                              QuotaReservationService reservations, RepositoryUsageRepository usage, AuditService audit, Clock clock) {
     this.requests = requests;
     this.plans = plans;
     this.decisions = decisions;
     this.evaluation = evaluation;
     this.approvals = approvals;
     this.publisher = publisher;
+    this.reservations = reservations;
+    this.usage = usage;
     this.audit = audit;
     this.clock = clock;
   }
@@ -142,15 +149,20 @@ public class ManifestEventHandler {
     ManifestRequest proposed = transition(request, RequestStatus.PLAN_PROPOSED, "Plan proposed with " + actions.size() + " actions",
         event.getEventId(), plan.planId(), plan.planDigest(), plan.stateVersion());
 
+    // Quota admission: hold the team's row lock (when it has a configuration) across the evaluation so the quota rule
+    // sees every committed reservation, and reserve this plan's deltas in the same transaction as PLAN_AUTHORIZED.
+    reservations.lockTeam(request.teamId());
     GovernanceDecision decision = evaluation.evaluate(GovernanceStage.ACTION_PLAN, proposed, Set.of(), plan).block(EVALUATION_TIMEOUT);
     if (decision == null) throw new RetryableException("Stage 2 evaluation produced no decision");
     decisions.insert(decision);
     audit.record("system", "STAGE2_DECISION", "manifest_request", request.id(), request.id(),
-        Map.of("decisionId", decision.id(), "type", decision.type().name(), "planId", plan.planId(), "policyRevision", decision.policyRevision()));
+        Map.of("decisionId", decision.id(), "type", decision.type().name(), "planId", plan.planId(), "policyRevision", decision.policyRevision(),
+            "shadowFindings", decision.shadowViolations().size() + decision.shadowApprovals().size()));
 
     switch (decision.type()) {
       case ALLOW -> {
         transition(proposed, RequestStatus.PLAN_AUTHORIZED, "Stage 2 allowed", event.getEventId(), null, null, null);
+        reservations.reserve(proposed, plan, decision.id());
         publisher.enqueueAuthorize(proposed, plan, decision.id());
         return Outcome.ok("AUTHORIZED");
       }
@@ -160,8 +172,8 @@ public class ManifestEventHandler {
         return Outcome.ok("REJECTED");
       }
       case REQUIRE_APPROVAL -> {
-        transition(proposed, RequestStatus.PENDING_APPROVAL_STAGE2, "Approval required: " + decision.approvalRequirements().stream().map(a -> a.policyId()).distinct().toList(), event.getEventId(), null, null, null);
-        approvals.open(proposed, decision, GovernanceStage.ACTION_PLAN, decision.approvalRequirements(), plan.planDigest(), plan.planId(), plan.planDigest());
+        transition(proposed, RequestStatus.PENDING_APPROVAL_STAGE2, "Approval required: " + decision.enforcedApprovals().stream().map(a -> a.policyId()).distinct().toList(), event.getEventId(), null, null, null);
+        approvals.open(proposed, decision, GovernanceStage.ACTION_PLAN, decision.enforcedApprovals(), plan.planDigest(), plan.planId(), plan.planDigest());
         return Outcome.ok("PENDING_APPROVAL");
       }
       default -> {
@@ -182,6 +194,11 @@ public class ManifestEventHandler {
     }
     transition(request, target, reason, event.getEventId(), null, null, event.getStateVersion());
     approvals.cancelPending(request.id(), "Request ended: " + target);
+    reservations.release(request.id(), target.name());
+    if (target == RequestStatus.COMPLETED || target == RequestStatus.FAILED) {
+      // The confirmed state (teams.repo.manifest) carries topic names only; remember the partitions this manifest declared.
+      usage.recordDeclaredPartitions(request.teamId(), request.repositoryId(), request.environment(), UsageMath.declaredPartitions(request.manifest()), clock.instant());
+    }
     audit.record("system", "REQUEST_" + target.name(), "manifest_request", request.id(), request.id(), Map.of("eventId", event.getEventId(), "reason", reason));
     return Outcome.ok(target.name());
   }

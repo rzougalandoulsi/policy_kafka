@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://itland.com/governance/opa/output/2.0",
+  "title": "Governance OPA decision, contract 2.0",
+  "description": "The result document of data.governance.core.decision. Provenance (?provenance=true) carries the per-bundle revisions separately.",
+  "type": "object",
+  "required": ["decision", "violations", "approvals", "matchedPolicies", "appliedExceptions", "ready", "bundles", "contractVersion"],
+  "$defs": {
+    "enforcement": {"type": "string", "enum": ["enforce", "shadow"]}
+  },
+  "properties": {
+    "decision": {"type": "string", "enum": ["ALLOW", "DENY", "REQUIRE_APPROVAL", "ERROR"]},
+    "contractVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "ready": {"type": "boolean"},
+    "bundles": {"type": "object", "additionalProperties": {"type": "string"}},
+    "revisions": {"type": "object", "additionalProperties": {"type": "string"}},
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["policyId", "severity", "message", "resourceType", "resourceName", "bypassable", "exempted", "exceptionId", "enforcement"],
+        "properties": {
+          "policyId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+          "severity": {"type": "string", "enum": ["DENY", "HARD_DENY"]},
+          "message": {"type": "string"},
+          "resourceType": {"type": "string"},
+          "resourceName": {"type": "string"},
+          "bypassable": {"type": "boolean"},
+          "exempted": {"type": "boolean"},
+          "exceptionId": {"type": ["string", "null"]},
+          "enforcement": {"$ref": "#/$defs/enforcement"}
+        }
+      }
+    },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["policyId", "message", "resourceType", "resourceName", "enforcement"],
+        "properties": {
+          "policyId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+          "message": {"type": "string"},
+          "resourceType": {"type": "string"},
+          "resourceName": {"type": "string"},
+          "enforcement": {"$ref": "#/$defs/enforcement"}
+        }
+      }
+    },
+    "matchedPolicies": {"type": "array", "items": {"type": "string"}},
+    "appliedExceptions": {"type": "array", "items": {"type": "string"}}
+  }
+}

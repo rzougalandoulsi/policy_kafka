@@ -7,9 +7,9 @@ Three services around a Kafka backbone:
 | **Governance** (new) | Public REST entry point: OAuth2 JWT, OPA policy evaluation (two stages), approvals, scoped exceptions, audit, Kafka handshake | `governance/` |
 | **Orchestrator** (existing, not implemented here) | Diff desired vs confirmed state, propose immutable plans, release only authorized plans, reconcile results | stand-in: `orchestrator-simulator/`; requirements: `docs/orchestrator-integration.md` |
 | **Processor** (existing, not implemented here) | Executes actions against Confluent Cloud | stand-in: `processor-simulator/` |
-| **Admin UI** (new) | Browser console for policy configuration, Rego bundles, scoped exceptions, approval rules and audit (OIDC login, roles from the token, API stays the enforcer) | `admin-ui/` |
+| **Admin UI** (new) | Browser console for team configuration, policy configuration (incl. shadow mode), Rego bundles and releases, scoped exceptions, approval rules, shadow findings and audit (OIDC login, roles from the token, API stays the enforcer) | `admin-ui/` |
 
-Supporting pieces: `contracts/` (shared Avro schemas), `policies/` (Rego v1 bundle + tests), `deploy/` (Docker Compose with SASL/ACLs, OPA, mock OIDC), `docs/`.
+Supporting pieces: `contracts/` (shared Avro schemas and the OPA input/output JSON schema, contract 2.0), `policies/` (six Rego v1 bundles + tests), `deploy/` (Docker Compose with SASL/ACLs, OPA, mock OIDC), `docs/`.
 
 ## Flow
 
@@ -27,7 +27,7 @@ Orchestrator verifies decisionId + planId + digest + stateVersion → releases A
 client ──GET /api/v1/requests/{id}──▶ Governance
 ```
 
-Exactly two topics carry the Governance↔Orchestrator protocol: `requests.manifest` (commands) and `response.manifest` (events). See `docs/kafka-contract.md`.
+Exactly two topics carry the Governance↔Orchestrator protocol: `requests.manifest` (commands) and `response.manifest` (events). Governance additionally reads the Orchestrator's confirmed state from `teams.repo.manifest` to project team usage for quotas (never writes it). See `docs/kafka-contract.md`.
 
 ## Build and test
 

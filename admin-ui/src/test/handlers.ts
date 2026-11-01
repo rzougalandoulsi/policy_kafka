@@ -141,6 +141,45 @@ export const handlers = [
     HttpResponse.json({ id: Number(params.id), resolved: true }),
   ),
   http.get(`${ADMIN}/policies`, () => HttpResponse.json(fx.catalog)),
+
+  http.get(`${ADMIN}/teams`, () => HttpResponse.json(fx.teams)),
+  http.get(`${ADMIN}/teams/:teamId/history`, ({ params }) =>
+    HttpResponse.json(params.teamId === 'team-a' ? fx.teamHistory : []),
+  ),
+  http.get(`${ADMIN}/teams/:teamId/usage`, ({ params }) =>
+    HttpResponse.json(
+      params.teamId === 'team-a'
+        ? fx.teamUsage
+        : { teamId: params.teamId, currentByEnvironment: {}, reservedByEnvironment: {}, repositories: [], reservations: [] },
+    ),
+  ),
+  http.get(`${ADMIN}/teams/:teamId`, ({ params }) => {
+    const t = fx.teams.find((x) => x.teamId === params.teamId);
+    return HttpResponse.json(t ?? fx.teamDefaults(String(params.teamId)));
+  }),
+  http.put(`${ADMIN}/teams/:teamId`, async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const existing = fx.teams.find((x) => x.teamId === params.teamId);
+    if (existing?.source === 'external' && body.source === 'external')
+      return HttpResponse.json(apiError('TEAM_CONFIGURATION_EXTERNAL', 'managed by an external registry'), { status: 409 });
+    return HttpResponse.json({
+      ...(existing ?? fx.teamDefaults(String(params.teamId))),
+      ...body,
+      version: (existing?.version ?? 0) + 1,
+      updatedBy: 'admin-1',
+      updatedAt: fx.NOW.toISOString(),
+    });
+  }),
+  http.delete(`${ADMIN}/teams/:teamId`, ({ params }) => HttpResponse.json(fx.teamDefaults(String(params.teamId)))),
+
+  http.get(`${ADMIN}/shadow-findings`, ({ request }) => {
+    const url = new URL(request.url);
+    const policyId = url.searchParams.get('policyId');
+    const teamId = url.searchParams.get('teamId');
+    return HttpResponse.json(
+      fx.shadowFindings.filter((f) => (!policyId || f.policyId === policyId) && (!teamId || f.teamId === teamId)),
+    );
+  }),
 ];
 
 export function apiError(

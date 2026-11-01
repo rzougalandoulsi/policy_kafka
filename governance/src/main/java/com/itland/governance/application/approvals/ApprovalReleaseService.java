@@ -2,6 +2,7 @@ package com.itland.governance.application.approvals;
 
 import com.itland.governance.application.audit.AuditService;
 import com.itland.governance.application.evaluation.PolicyEvaluationService;
+import com.itland.governance.application.usage.QuotaReservationService;
 import com.itland.governance.domain.approval.ApprovalRequest;
 import com.itland.governance.domain.decision.DecisionType;
 import com.itland.governance.domain.decision.GovernanceDecision;
@@ -41,16 +42,19 @@ public class ApprovalReleaseService {
   private final ProposedPlanRepository plans;
   private final PolicyEvaluationService evaluation;
   private final ManifestCommandPublisher publisher;
+  private final QuotaReservationService reservations;
   private final AuditService audit;
   private final Clock clock;
 
   public ApprovalReleaseService(ManifestRequestRepository requests, DecisionRepository decisions, ProposedPlanRepository plans,
-                                PolicyEvaluationService evaluation, ManifestCommandPublisher publisher, AuditService audit, Clock clock) {
+                                PolicyEvaluationService evaluation, ManifestCommandPublisher publisher, QuotaReservationService reservations,
+                                AuditService audit, Clock clock) {
     this.requests = requests;
     this.decisions = decisions;
     this.plans = plans;
     this.evaluation = evaluation;
     this.publisher = publisher;
+    this.reservations = reservations;
     this.audit = audit;
     this.clock = clock;
   }
@@ -106,6 +110,9 @@ public class ApprovalReleaseService {
       audit.record(actor, "APPROVAL_RELEASE_STALE", "manifest_request", request.id(), request.id(), Map.of("approvalId", approval.id()));
       return;
     }
+    // Quota admission under the team's row lock: concurrent approvals of one team are serialised here and the second
+    // re-evaluation sees the first plan's committed reservation.
+    reservations.lockTeam(request.teamId());
     GovernanceDecision decision = evaluate(GovernanceStage.ACTION_PLAN, request, plan);
     decisions.insert(decision);
     switch (decision.type()) {
@@ -116,6 +123,7 @@ public class ApprovalReleaseService {
       }
       default -> {
         transition(request, RequestStatus.PLAN_AUTHORIZED, "Approved by quorum; plan authorized");
+        reservations.reserve(request, plan, decision.id());
         publisher.enqueueAuthorize(request, plan, decision.id());
       }
     }
