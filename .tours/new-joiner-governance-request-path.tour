@@ -1,0 +1,82 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Governance request path (new joiner)",
+  "description": "Follow one manifest from POST /api/v1/manifests through OPA, the transactional outbox, the Orchestrator's PLAN_PROPOSED reply, stage 2 and approvals. Read alongside docs/flow-animation.html, which animates the same path.",
+  "steps": [
+    {
+      "directory": "governance/src/main/java/com/itland/governance",
+      "title": "Four layers, one service",
+      "description": "Governance is a single Spring WebFlux application (ADR 0001). `api/` holds controllers and DTOs, `application/` the use cases, `domain/` records and the lifecycle rules, `infrastructure/` Kafka, OPA, persistence and security adapters.\n\nTwo things are not in this tree but matter as much: the Rego policies in `policies/governance/` (shipped to OPA as a versioned bundle) and the Avro protocol in `contracts/`. JDBC is blocking, so everything that touches Postgres runs through `Blocking` on a dedicated scheduler (ADR 0003). Keep an eye out for `blocking.inTransaction` and `blocking.transactional` below: each one is a transaction boundary."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/api/manifest/ManifestController.java",
+      "line": 33,
+      "title": "The front door",
+      "description": "Every manifest enters here. The controller only maps outcomes to HTTP: `STAGE1_DENIED` becomes 422 with the violations, anything pending or accepted becomes 202 with a `Location` header pointing at `/api/v1/requests/{id}`, and an idempotent replay becomes 200.\n\nNothing privileged is read from the body. The caller's identity, teams, environments and roles come from the validated JWT via `callers.of(authentication)`. The 503 fail-closed case is not visible here: it is raised as an exception by the submission service and mapped in `ApiExceptionHandler`."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/application/submission/ManifestSubmissionService.java",
+      "selection": { "start": { "line": 78, "character": 0 }, "end": { "line": 111, "character": 0 } },
+      "title": "Stage 1: record first, evaluate second",
+      "description": "The first transaction inserts the request in `RECEIVED` keyed by (principal, Idempotency-Key) and records an audit row. A reused key with a different manifest digest is a 409; the same digest is a replay and skips evaluation entirely. The `DuplicateKeyException` branch handles two concurrent first submissions.\n\nOnly after that commit does the reactive chain call OPA. Note the last `flatMap`: an `ERROR` decision is persisted and the request parked in `EVALUATION_ERROR` before the HTTP call fails with 503. The client can retry with the same key and the request resumes rather than duplicating."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/application/evaluation/PolicyEvaluationService.java",
+      "selection": { "start": { "line": 68, "character": 0 }, "end": { "line": 90, "character": 0 } },
+      "title": "Building the OPA input",
+      "description": "Both stages share this method. It loads the active policy configuration snapshot (the ACTIVE bundle revision plus the ACTIVE configuration version) and resolves the scoped exceptions that are valid right now for this principal, team and environment. Both go into `input` next to the manifest or plan, so OPA never reads a database.\n\nTwo guards turn into `ERROR` decisions rather than exceptions: no ACTIVE bundle, and any `OpaException` after the client's bounded retries. Further down, `toDecision` adds two more: OPA's reported bundle revision must equal the ACTIVE one, and the Java aggregate must agree with OPA's own verdict. Fail closed is the default everywhere in this file."
+    },
+    {
+      "file": "policies/governance/decision.rego",
+      "selection": { "start": { "line": 15, "character": 0 }, "end": { "line": 57, "character": 0 } },
+      "title": "The verdict, in Rego",
+      "description": "This is the entry point OPA evaluates: `POST /v1/data/governance/decision`. Violations from the naming, rbac, limits and destructive packages are merged, sorted for determinism, and annotated with the id of a matching exception from `exceptions.rego`.\n\nThe precedence is spelled out at the top: `HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW`. Only non-exempted violations block. A hard deny also empties the approvals list, so nobody can approve around it. The `revision` field is how Governance later checks that OPA runs the bundle it thinks is active. Each policy's id, severity and `bypassable` flag is also published through `catalog.rego`, which the admin console reads."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/application/evaluation/DecisionAggregator.java",
+      "selection": { "start": { "line": 35, "character": 0 }, "end": { "line": 45, "character": 0 } },
+      "title": "The same verdict, in Java",
+      "description": "Governance does not trust OPA's `decision` string on its own. It re-derives the type from the violations and approvals OPA returned and records whether both agree (`consistent`). A disagreement becomes an `ERROR` decision in `PolicyEvaluationService.toDecision`.\n\nThe real safety net is `normalize` just below: an exemption only counts when the policy is bypassable, not a hard deny, OPA says it matched, and the exception id is one Governance itself resolved and passed in. A forged or stale `exceptionId` coming back from a policy cannot exempt anything."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/application/submission/ManifestSubmissionService.java",
+      "selection": { "start": { "line": 113, "character": 0 }, "end": { "line": 148, "character": 0 } },
+      "title": "Applying the decision atomically",
+      "description": "Back in the submission service, one transaction stores the decision, checks the transition against `RequestLifecycle`, appends to `request_status_history` with optimistic locking on `version`, and then either enqueues `SUBMIT_MANIFEST` in the outbox or opens an approval. Kafka is never called here.\n\nThe gotcha is the `canTransition` branch: if the request has moved on, the decision is still recorded for audit but the state does not change. That is what keeps retries and races from corrupting a request."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/domain/request/RequestLifecycle.java",
+      "line": 11,
+      "title": "The only place transitions are defined",
+      "description": "This map is the single source of truth for legal state changes. Every service you will see, including the Kafka event handler, calls `canTransition` before writing. Anything not listed is rejected and logged as out of order.\n\nRead the terminal set in `RequestStatus` next to it. `EVALUATION_ERROR` is deliberately not terminal and can resume to almost anywhere, which is what makes OPA outages recoverable without a new request."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/infrastructure/kafka/OutboxRelay.java",
+      "line": 61,
+      "title": "Outbox: how commands actually leave",
+      "description": "A scheduled relay claims due outbox rows, decodes the Avro payload, produces to `requests.manifest` keyed by `teamId`, and marks each row sent or retried with exponential backoff. The state change and the intent to publish were committed together earlier, so a crash between the two is impossible (ADR 0002).\n\nAfter `maxAttempts` a row is marked failed rather than blocking the batch. Watch the outbox metrics and the dead-letter page in the admin console for these."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/infrastructure/kafka/InboxProcessor.java",
+      "selection": { "start": { "line": 46, "character": 0 }, "end": { "line": 55, "character": 0 } },
+      "title": "Inbox: how events come back",
+      "description": "The `response.manifest` consumer hands each record here. `insertIfAbsent` on `eventId` is the deduplication: a redelivered event is logged and dropped before any handler runs. Then `attempt` runs the handler in its own transaction and marks the inbox row processed or ignored.\n\nThe rest of the file is the retry policy: a `RetryableException` (typically OPA being unavailable during stage 2) is retried with backoff up to a limit and then dead-lettered, while an unexpected bug is dead-lettered immediately so a poison event can never block a partition."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/application/lifecycle/ManifestEventHandler.java",
+      "selection": { "start": { "line": 116, "character": 0 }, "end": { "line": 170, "character": 0 } },
+      "title": "Stage 2 starts when the plan arrives",
+      "description": "`PLAN_PROPOSED` is the Orchestrator's answer to `SUBMIT_MANIFEST`. Before anything else the handler recomputes `planDigest` from the actions, the manifest digest and `stateVersion`; a mismatch sends `REJECT_PLAN` with `DIGEST_MISMATCH`. Out-of-order events are ignored via `canTransition`, and a plan for a closed request gets `REJECT_PLAN` with `REQUEST_CLOSED` so the Orchestrator drops it.\n\nThen the same `PolicyEvaluationService.evaluate` runs with stage `ACTION_PLAN` and the full action list. `ALLOW` enqueues `AUTHORIZE_PLAN` carrying `decisionId`, `planId` and `planDigest`; `DENY` enqueues `REJECT_PLAN`; `REQUIRE_APPROVAL` opens an approval bound to the plan digest and publishes nothing. No Kafka thread ever waits for a human."
+    },
+    {
+      "file": "governance/src/main/java/com/itland/governance/application/approvals/ApprovalReleaseService.java",
+      "selection": { "start": { "line": 96, "character": 0 }, "end": { "line": 124, "character": 0 } },
+      "title": "After quorum: revalidate, never just release",
+      "description": "When the last approver's decision reaches quorum, Governance does not simply send `AUTHORIZE_PLAN`. It checks that the approval still refers to the request's current plan, compares the plan's `stateVersion` with the latest confirmed one for that repository (older means `STALE_PLAN` plus `REJECT_PLAN`), and re-runs the stage 2 evaluation with today's policies and exceptions.\n\nOnly an `ALLOW` on that fresh decision releases the plan. A `DENY` after approval is possible if policies or exceptions changed in between, and it is recorded as such. `ApprovalExpiryJob` handles the other exit: TTL elapsed, approval closed as `APPROVAL_EXPIRED`, plan rejected."
+    },
+    {
+      "title": "Where to go next",
+      "description": "You can now trace any request end to end: controller, stage 1, OPA, outbox, Orchestrator, inbox, stage 2, approvals.\n\n- Open `docs/flow-animation.html` from your checkout to watch these steps play out for the happy path, a hard deny, a scoped exception, a stage 2 approval and an OPA outage.\n- `PolicyBundleService.verifyActivation` is the other side of the revision check: it rolls back a bundle OPA did not adopt within 90 seconds.\n- The admin console in `admin-ui/` (routes in `src/App.tsx`) is where exceptions, configurations, bundles and approval rules are managed; `docs/admin-ui.md` explains its sign-in and proxy setup.\n- `GovernanceEndToEndIT` runs the whole handshake against real containers and is the fastest way to see every branch exercised."
+    }
+  ]
+}

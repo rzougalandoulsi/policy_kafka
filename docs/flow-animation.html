@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Governance flow explainer</title>
+<meta name="description" content="Animated walkthrough of the two-stage manifest handshake between the client, Governance, OPA, Kafka, the Orchestrator and the Processor.">
+<!--
+  Self-contained explainer: no build step, no network. Open this file directly in a browser.
+
+  Names used here are copied from the code and must be kept in sync with it:
+    - request states and transitions ........ governance/src/main/java/com/itland/governance/domain/request/RequestStatus.java, RequestLifecycle.java
+    - command and event names ............... contracts/src/main/avro/GovernanceTypes.avsc
+    - topics, digests, delivery semantics ... docs/kafka-contract.md
+    - decision precedence ................... policies/governance/decision.rego (HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW)
+    - policy ids, severity, bypassable ...... policies/governance/catalog.rego
+    - REST endpoints and status codes ....... docs/governance.md
+  GitHub shows this file as source. Open it from a checkout (file://) or any static server.
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6676; --line: #d9dee6; --rail: #c5ccd6;
+    --accent: #2457d6; --http: #2457d6; --cmd: #c2620a; --evt: #7a3fb3; --opa: #0f8a5f; --other: #6b7482; --internal: #3b4452;
+    --ok: #0f8a5f; --deny: #c92a2a; --error: #b45309; --approval: #8a5a00;
+    --ok-bg: #e5f6ee; --deny-bg: #fbe7e7; --error-bg: #fdf0df; --approval-bg: #fbf1d6; --info-bg: #e8eefb; --neutral-bg: #eef1f5;
+    --focus: #2457d6; --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .1);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #9aa4b2; --line: #2a323e; --rail: #3a4452;
+      --accent: #7ea2ff; --http: #7ea2ff; --cmd: #f0a35a; --evt: #c08df0; --opa: #4fd1a0; --other: #9aa4b2; --internal: #b8c1cd;
+      --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d;
+      --ok-bg: #12332a; --deny-bg: #3a1a1c; --error-bg: #3a2a14; --approval-bg: #38300f; --info-bg: #1b2740; --neutral-bg: #222a35;
+      --shadow: none; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #9aa4b2; --line: #2a323e; --rail: #3a4452;
+    --accent: #7ea2ff; --http: #7ea2ff; --cmd: #f0a35a; --evt: #c08df0; --opa: #4fd1a0; --other: #9aa4b2; --internal: #b8c1cd;
+    --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d;
+    --ok-bg: #12332a; --deny-bg: #3a1a1c; --error-bg: #3a2a14; --approval-bg: #38300f; --info-bg: #1b2740; --neutral-bg: #222a35;
+    --shadow: none; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 0 16px 40px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  a { color: var(--accent); }
+  header { max-width: 1240px; margin: 0 auto; padding: 24px 0 12px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; justify-content: space-between; }
+  h1 { font-size: 22px; margin: 0; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 12px 0; position: sticky; top: 0; background: var(--bg); z-index: 2; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tabs button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 12px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 14px; }
+  .tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .transport { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+  .transport button, .transport select, .theme { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 14px; cursor: pointer; min-width: 40px; }
+  .transport button:disabled { opacity: .45; cursor: default; }
+  .transport .play { min-width: 84px; font-weight: 600; }
+  .progress { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 9ch; text-align: right; }
+  button:focus-visible, select:focus-visible, li[tabindex]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .status-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); margin-bottom: 14px; }
+  .status-bar .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 13px; background: var(--neutral-bg); border: 1px solid transparent; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); } .pill.deny { background: var(--deny-bg); color: var(--deny); }
+  .pill.error { background: var(--error-bg); color: var(--error); } .pill.approval { background: var(--approval-bg); color: var(--approval); }
+  .pill.info { background: var(--info-bg); color: var(--accent); } .pill.terminal { border-color: currentColor; }
+  .trail { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; color: var(--muted); font-size: 13px; }
+  .trail code { padding: 1px 6px; border-radius: 6px; background: var(--neutral-bg); }
+  .trail .arrow { opacity: .6; }
+  .scenario-intro { margin: 0 0 14px; color: var(--muted); max-width: 90ch; }
+  .layout { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 4fr); gap: 16px; align-items: start; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .transport { margin-left: 0; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  .diagram { padding: 0 8px 12px; overflow: auto; max-height: 76vh; }
+  .diagram svg { display: block; width: 100%; height: auto; min-width: 760px; }
+  .lanes { position: sticky; top: 0; z-index: 1; background: var(--panel); padding-top: 8px; border-bottom: 1px solid var(--line); }
+  .log { max-height: 76vh; overflow: auto; position: relative; }
+  .log h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0; padding: 12px 14px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 1; background: var(--panel); }
+  .log ol { list-style: none; margin: 0; padding: 6px 0; }
+  .log li { padding: 10px 14px 10px 44px; position: relative; border-left: 3px solid transparent; cursor: pointer; }
+  .log li:hover { background: var(--neutral-bg); }
+  .log li.current { border-left-color: var(--accent); background: var(--info-bg); }
+  .log li.future { opacity: .45; }
+  .log li .n { position: absolute; left: 14px; top: 11px; width: 22px; height: 22px; border-radius: 50%; background: var(--neutral-bg); color: var(--muted); font-size: 12px; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+  .log li.current .n { background: var(--accent); color: #fff; }
+  .log li .title { font-weight: 600; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .log li .route { color: var(--muted); font-weight: 400; font-size: 13px; }
+  .log li .detail { margin: 4px 0 0; color: var(--ink); font-size: 14px; }
+  .log li .fields { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
+  .log li .fields code { background: var(--neutral-bg); padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+  .log li .fields code b { font-weight: 600; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 14px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 13px; }
+  .legend li::before { content: ""; display: inline-block; width: 22px; height: 3px; border-radius: 2px; margin: 0 8px 3px 0; background: var(--c); }
+  .legend li.dashed::before { background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
+  .invariants { margin: 22px 0 0; padding: 16px 18px; }
+  .invariants h2 { font-size: 16px; margin: 0 0 8px; }
+  .invariants ul { margin: 0; padding-left: 20px; } .invariants li { margin: 4px 0; }
+  .invariants p { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; background: var(--panel); }
+  noscript { display: block; padding: 20px; background: var(--deny-bg); color: var(--deny); border-radius: 10px; }
+
+  /* SVG */
+  .lane-box { fill: var(--panel); stroke: var(--line); }
+  .lane-name { font-weight: 600; font-size: 14px; fill: var(--ink); }
+  .lane-sub { font-size: 11px; fill: var(--muted); }
+  .lifeline { stroke: var(--rail); stroke-dasharray: 3 5; }
+  .step { transition: opacity .25s; } .step.past { opacity: .5; }
+  .msg { stroke-width: 2; fill: none; } .msg.dashed { stroke-dasharray: 6 5; }
+  .msg-label { font-size: 12px; fill: var(--ink); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+  .note-box { stroke-width: 1.5; } .note-text { font-size: 12px; fill: var(--ink); }
+  .banner-box { fill: var(--info-bg); stroke: none; } .banner-text { font-size: 12.5px; fill: var(--ink); }
+  .k-http { color: var(--http); } .k-cmd { color: var(--cmd); } .k-evt { color: var(--evt); } .k-opa { color: var(--opa); } .k-other { color: var(--other); } .k-internal { color: var(--internal); }
+  .t-ok { color: var(--ok); } .t-deny { color: var(--deny); } .t-error { color: var(--error); } .t-approval { color: var(--approval); }
+  .msg, .note-box { stroke: currentColor; } .note-box { fill: var(--panel); } marker path { fill: currentColor; }
+  .token { fill: currentColor; stroke: var(--panel); stroke-width: 2; }
+  .pulse { animation: pulse .9s ease-out 1; transform-box: fill-box; transform-origin: center; }
+  @keyframes pulse { 0% { transform: scale(1); } 40% { transform: scale(1.04); } 100% { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } .step { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Governance flow explainer</h1>
+    <p>How a manifest travels from the client through Governance, OPA and the two Kafka protocol topics to the Orchestrator, and back. Pick a scenario, press play, or step through with <kbd>←</kbd> <kbd>→</kbd> and <kbd>space</kbd>.</p>
+  </div>
+  <button class="theme" id="theme" type="button" aria-label="Toggle colour theme">Theme: auto</button>
+</header>
+<noscript>This explainer needs JavaScript. The same flow is described in text in <code>README.md</code> ("Flow") and <code>docs/governance.md</code> ("Request lifecycle").</noscript>
+<main class="wrap">
+  <div class="toolbar">
+    <div class="tabs" role="tablist" aria-label="Scenario" id="tabs"></div>
+    <div class="transport">
+      <button type="button" id="restart" title="Restart (Home)" aria-label="Restart">⏮</button>
+      <button type="button" id="prev" title="Previous step (←)" aria-label="Previous step">◀</button>
+      <button type="button" id="play" class="play" title="Play / pause (space)">Play</button>
+      <button type="button" id="next" title="Next step (→)" aria-label="Next step">▶</button>
+      <select id="speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+      <span class="progress" id="progress"></span>
+    </div>
+  </div>
+  <p class="scenario-intro" id="intro"></p>
+  <div class="status-bar">
+    <span class="label">Request status</span>
+    <span class="pill" id="status">—</span>
+    <span class="trail" id="trail" aria-label="Status history"></span>
+  </div>
+  <div class="layout">
+    <section class="panel diagram" aria-label="Sequence diagram">
+      <div class="lanes"><svg id="lanes" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg></div>
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svgtitle"><title id="svgtitle">Sequence diagram of the selected scenario</title></svg>
+    </section>
+    <aside class="panel log" aria-label="Step log">
+      <h2>Steps</h2>
+      <ol id="log"></ol>
+    </aside>
+  </div>
+  <ul class="legend">
+    <li style="--c: var(--http)">HTTP (REST API)</li>
+    <li style="--c: var(--opa)">OPA decision call</li>
+    <li style="--c: var(--cmd)"><code>requests.manifest</code> command</li>
+    <li style="--c: var(--evt)"><code>response.manifest</code> event</li>
+    <li style="--c: var(--other)">existing topics (<code>teams.changes</code>, <code>request.status</code>)</li>
+    <li style="--c: var(--internal)">internal step (same DB transaction)</li>
+    <li class="dashed" style="--c: var(--error)">missing or failed reply</li>
+  </ul>
+  <section class="panel invariants">
+    <h2>Invariants that hold in every scenario</h2>
+    <ul>
+      <li>Exactly two topics carry the Governance ↔ Orchestrator protocol: <code>requests.manifest</code> (commands <code>SUBMIT_MANIFEST</code>, <code>AUTHORIZE_PLAN</code>, <code>REJECT_PLAN</code>) and <code>response.manifest</code> (events <code>PLAN_PROPOSED</code>, <code>MANIFEST_COMPLETED</code>, <code>MANIFEST_FAILED</code>, <code>MANIFEST_REJECTED</code>).</li>
+      <li>Every status transition is checked by <code>RequestLifecycle</code> and appended to <code>request_status_history</code>; commands leave through a transactional outbox, events arrive through an inbox keyed by <code>eventId</code>.</li>
+      <li>Decision precedence is <code>HARD_DENY &gt; DENY &gt; REQUIRE_APPROVAL &gt; ALLOW</code>. Only bypassable violations honour exceptions, and only exceptions Governance itself resolved. Approval requirements are never bypassable.</li>
+      <li>The Orchestrator releases Actions only after verifying <code>decisionId + planId + planDigest + stateVersion</code>. A plan computed against an older <code>stateVersion</code> ends as <code>STALE_PLAN</code>.</li>
+      <li>OPA unreachable, bundle revision mismatch or a Java/Rego disagreement all yield <code>ERROR</code>: nothing is published and the API answers 503.</li>
+    </ul>
+    <p>Sources: <code>docs/governance.md</code>, <code>docs/kafka-contract.md</code>, <code>RequestLifecycle.java</code>, <code>GovernanceTypes.avsc</code>, <code>decision.rego</code>, <code>catalog.rego</code>. Keep this page in step with them.</p>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+
+  // ---------- participants ----------
+  const PARTICIPANTS = [
+    { id: 'client', name: 'Client', sub: 'developer / CI' },
+    { id: 'approver', name: 'Approver', sub: 'governance-approver' },
+    { id: 'governance', name: 'Governance', sub: 'Spring Boot + Postgres' },
+    { id: 'opa', name: 'OPA', sub: 'governance bundle' },
+    { id: 'kafka', name: 'Kafka', sub: 'two protocol topics' },
+    { id: 'orchestrator', name: 'Orchestrator', sub: 'plans + confirmed state' },
+    { id: 'processor', name: 'Processor', sub: 'applies Actions' },
+  ];
+
+  // ---------- shared identifiers (illustrative values, real shapes) ----------
+  const ID = {
+    requestId: 'req-7f3a21', manifestDigest: 'sha256:9c1e…b7', planId: 'plan-02b4', planDigest: 'sha256:5a7d…e3',
+    dec1: 'dec-1a90', dec2: 'dec-2b17', policyRevision: 'rev-20261101-3', configurationVersion: 7,
+  };
+
+  // ---------- step helpers ----------
+  // kind: http | cmd | evt | opa | other | internal | note      tone: ok | deny | error | approval
+  const http = (from, to, label, extra = {}) => ({ from, to, kind: 'http', label, ...extra });
+  const opa = (from, to, label, extra = {}) => ({ from, to, kind: 'opa', label, ...extra });
+  const cmd = (from, to, label, extra = {}) => ({ from, to, kind: 'cmd', label, ...extra });
+  const evt = (from, to, label, extra = {}) => ({ from, to, kind: 'evt', label, ...extra });
+  const other = (from, to, label, extra = {}) => ({ from, to, kind: 'other', label, ...extra });
+  const internal = (at, label, extra = {}) => ({ from: at, to: at, kind: 'internal', label, ...extra });
+  const note = (label, extra = {}) => ({ kind: 'note', label, ...extra });
+
+  const submit = (detail, fields = {}) => http('client', 'governance', 'POST /api/v1/manifests', {
+    status: 'RECEIVED',
+    detail: detail || 'Identity comes only from the validated JWT (sub, teams[], environments[], roles[]). Governance stores the manifest, computes manifestDigest and honours the Idempotency-Key header.',
+    fields: { requestId: ID.requestId, manifestDigest: ID.manifestDigest, 'Idempotency-Key': 'ci-run-5521', ...fields },
+  });
+  const stage1 = (extra = {}) => opa('governance', 'opa', 'stage REQUEST', {
+    detail: 'POST /v1/data/governance/decision?provenance=true with input {stage, principal, team, environment, manifest, configuration, exceptions}. Timeouts and bounded retries apply.',
+    fields: { stage: 'REQUEST', configurationVersion: ID.configurationVersion }, ...extra,
+  });
+  const allow1 = (extra = {}) => opa('opa', 'governance', 'ALLOW', {
+    tone: 'ok',
+    detail: 'No violation and no approval requirement. The provenance revision equals the ACTIVE bundle revision and the Java aggregate agrees with decision.rego, so the decision stands.',
+    fields: { decisionId: ID.dec1, policyRevision: ID.policyRevision, type: 'ALLOW' }, ...extra,
+  });
+  const accepted = (extra = {}) => http('governance', 'client', '202 Accepted', {
+    tone: 'ok', status: 'SUBMITTED',
+    detail: 'One DB transaction writes the status transition, its request_status_history row, the decision and the outbox row for SUBMIT_MANIFEST.',
+    fields: { status: 'SUBMITTED' }, ...extra,
+  });
+  const submitCmd = () => cmd('governance', 'kafka', 'requests.manifest · SUBMIT_MANIFEST', {
+    detail: 'The outbox relay publishes with an idempotent producer, keyed by teamId. The command carries requestId, teamId, repositoryId, environment and the manifest payload.',
+    fields: { commandId: 'cmd-31c0', key: 'team-a' },
+  });
+  const consumeSubmit = () => cmd('kafka', 'orchestrator', 'consume SUBMIT_MANIFEST', {
+    detail: 'The Orchestrator re-keys to teamId|repoId|environment and diffs the desired manifest against its confirmed state.',
+  });
+  const planProposed = (sv = 41) => evt('orchestrator', 'kafka', 'response.manifest · PLAN_PROPOSED', {
+    fields: { eventId: 'evt-8d2f', planId: ID.planId, planDigest: ID.planDigest, stateVersion: sv },
+  });
+  const consumePlan = () => evt('kafka', 'governance', 'consume PLAN_PROPOSED', {
+    status: 'PLAN_PROPOSED',
+    detail: 'The inbox keyed by eventId drops duplicates and records out-of-order events as IGNORED. Governance recomputes planDigest and rejects a mismatch.',
+  });
+  const stage2 = (extra = {}) => opa('governance', 'opa', 'stage ACTION_PLAN', {
+    detail: 'Same decision endpoint, now with the full action list and plan metadata as input. Exceptions are re-resolved against the plan’s actions.',
+    fields: { stage: 'ACTION_PLAN' }, ...extra,
+  });
+  const authorize = () => cmd('governance', 'kafka', 'requests.manifest · AUTHORIZE_PLAN', {
+    status: 'PLAN_AUTHORIZED',
+    detail: 'Again through the outbox, in the same transaction as the transition. The command binds decisionId, planId and planDigest.',
+    fields: { decisionId: ID.dec2, planId: ID.planId, planDigest: ID.planDigest },
+  });
+  const consumeAuthorize = () => cmd('kafka', 'orchestrator', 'consume AUTHORIZE_PLAN', {
+    detail: 'The Orchestrator verifies decisionId + planId + planDigest + stateVersion against its pending plan. A duplicate AUTHORIZE_PLAN is a no-op.',
+  });
+  const release = () => other('orchestrator', 'processor', 'teams.changes · Actions', {
+    detail: 'Only now are Actions released on the existing teams.changes topic; the Processor applies them to the cluster.',
+  });
+  const results = () => other('processor', 'orchestrator', 'request.status · results', {
+    detail: 'The Orchestrator reconciles the results and bumps the confirmed stateVersion.', fields: { stateVersion: 42 },
+  });
+  const completedEvt = () => evt('orchestrator', 'kafka', 'response.manifest · MANIFEST_COMPLETED', { fields: { planId: ID.planId, stateVersion: 42 } });
+  const consumeCompleted = () => evt('kafka', 'governance', 'consume MANIFEST_COMPLETED', { tone: 'ok', status: 'COMPLETED', detail: 'Terminal state. MANIFEST_FAILED would end in FAILED instead.' });
+  const poll = () => http('client', 'governance', 'GET /api/v1/requests/' + ID.requestId, {
+    detail: 'Also /decisions and /plan. Readable by the requester, team members, approvers, auditors and admins.', fields: { status: 'COMPLETED' },
+  });
+
+  // ---------- scenarios ----------
+  const SCENARIOS = [
+    {
+      key: 'happy', name: 'Happy path',
+      intro: 'A compliant manifest: both OPA stages allow, the Orchestrator releases the plan, the Processor applies it, and the client polls the final status.',
+      steps: [
+        submit(), stage1(), allow1(), accepted(), submitCmd(), consumeSubmit(),
+        internal('orchestrator', 'diff → immutable plan', {
+          detail: 'planDigest = SHA-256(sorted actions + manifestDigest + stateVersion). The plan is kept as pending next to the confirmed state.',
+          fields: { planId: ID.planId, planDigest: ID.planDigest, stateVersion: 41 },
+        }),
+        planProposed(), consumePlan(), stage2({ fields: { stage: 'ACTION_PLAN', actions: 3 } }),
+        opa('opa', 'governance', 'ALLOW', { tone: 'ok', fields: { decisionId: ID.dec2, policyRevision: ID.policyRevision, type: 'ALLOW' } }),
+        authorize(), consumeAuthorize(), release(), results(), completedEvt(), consumeCompleted(), poll(),
+      ],
+    },
+    {
+      key: 'deny', name: 'Stage 1 hard deny',
+      intro: 'The manifest grants an administrative role. RBAC_ADMIN_ROLE_FORBIDDEN is a HARD_DENY: no exception, no approval, and nothing ever reaches Kafka.',
+      steps: [
+        submit('The manifest’s rbac section binds a principal to an administrative role listed in rbac.forbiddenRoles.'),
+        stage1(),
+        opa('opa', 'governance', 'DENY · RBAC_ADMIN_ROLE_FORBIDDEN', {
+          tone: 'deny',
+          detail: 'Severity HARD_DENY. Precedence is HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW. Not bypassable: exceptions are ignored and no approval can go around it.',
+          fields: { decisionId: ID.dec1, severity: 'HARD_DENY', bypassable: 'false', policyRevision: ID.policyRevision },
+        }),
+        internal('governance', 'decision recorded, nothing published', {
+          tone: 'deny', status: 'STAGE1_DENIED',
+          detail: 'Terminal state. No outbox row is written, so the Orchestrator never hears about the request.',
+        }),
+        http('governance', 'client', '422 Unprocessable Entity', {
+          tone: 'deny', detail: 'The body lists the violations with policyId, severity and the offending resource.', fields: { violations: 1 },
+        }),
+      ],
+    },
+    {
+      key: 'exception', name: 'Scoped exception',
+      intro: 'A topic asks for more partitions than the limit, but an admin created a scoped exception for this team and resource pattern. The violation fires and is exempted.',
+      steps: [
+        submit('Topic team-a.orders asks for 96 partitions; limits.maxPartitionsPerTopic is 48 in development.', { topic: 'team-a.orders', partitions: 96 }),
+        internal('governance', 'resolve scoped exceptions', {
+          detail: 'Candidates valid right now for (principal, team, environment): exc-d3491655 for MAX_PARTITIONS_PER_TOPIC, resourcePattern team-a.*, actionTypes [CREATE_TOPIC], expiring in 7 days.',
+          fields: { exceptionId: 'exc-d3491655', policyId: 'MAX_PARTITIONS_PER_TOPIC', resourcePattern: 'team-a.*' },
+        }),
+        stage1({ label: 'stage REQUEST + input.exceptions', fields: { stage: 'REQUEST', exceptions: 1 } }),
+        opa('opa', 'governance', 'ALLOW (1 violation exempted)', {
+          tone: 'ok',
+          detail: 'MAX_PARTITIONS_PER_TOPIC matches but is bypassable; OPA checks the exception’s resource glob and action scope, so the violation does not count. Only exceptions Governance itself resolved are honoured.',
+          fields: { decisionId: ID.dec1, matchedPolicies: 'MAX_PARTITIONS_PER_TOPIC', appliedExceptions: 'exc-d3491655' },
+        }),
+        accepted({ detail: 'The decision stores appliedExceptions and the audit log links the request to the exception.' }),
+        submitCmd(),
+        note('From here the flow is the happy path. Stage 2 re-resolves exceptions against the plan’s actions; a revoked or expired exception no longer counts.'),
+      ],
+    },
+    {
+      key: 'approval', name: 'Stage 2 approval',
+      intro: 'Deleting a production topic needs approval. The plan reveals the deletion, two approvers decide, and Governance revalidates before it authorises.',
+      steps: [
+        submit('The manifest removes topic team-a.legacy-events in production.', { environment: 'production' }),
+        stage1(),
+        allow1({ detail: 'Nothing to object to at manifest level: the deletion only appears once the Orchestrator diffs against confirmed state.' }),
+        accepted(), submitCmd(),
+        internal('orchestrator', 'diff → plan with DELETE_TOPIC', {
+          fields: { planId: ID.planId, planDigest: ID.planDigest, stateVersion: 41, actions: 'DELETE_TOPIC team-a.legacy-events' },
+        }),
+        planProposed(), consumePlan(), stage2(),
+        opa('opa', 'governance', 'REQUIRE_APPROVAL · PROD_TOPIC_DELETE_REQUIRES_APPROVAL', {
+          tone: 'approval',
+          detail: 'approvals.productionTopicDeletion is on for this environment. Approval requirements are never bypassable.',
+          fields: { decisionId: ID.dec2, approvalRequirements: 'PROD_TOPIC_DELETE_REQUIRES_APPROVAL' },
+        }),
+        internal('governance', 'open approval bound to planDigest', {
+          tone: 'approval', status: 'PENDING_APPROVAL_STAGE2',
+          detail: 'Approver roles, quorum, separation of duties and TTL come from the active approval configuration. Nothing is published; no Kafka thread waits for a human.',
+          fields: { approvalId: 'apr-5e60', quorum: 2, ttlHours: 72 },
+        }),
+        http('approver', 'governance', 'POST /api/v1/approvals/apr-5e60/decisions', {
+          detail: 'approver-1 approves. Decisions are idempotent per approver, and the requester cannot approve their own request.',
+          fields: { decision: 'APPROVE', approvals: '1 / 2' },
+        }),
+        http('approver', 'governance', 'POST /api/v1/approvals/apr-5e60/decisions', {
+          tone: 'ok', detail: 'approver-2 approves: quorum reached.', fields: { decision: 'APPROVE', approvals: '2 / 2' },
+        }),
+        internal('governance', 'revalidate before release', {
+          detail: 'Policies and exceptions are evaluated again, the plan digest must still match, and the plan’s stateVersion must equal the latest confirmed one. A mismatch ends in STALE_PLAN and a REJECT_PLAN command.',
+          fields: { planDigest: 'match', stateVersion: '41 = 41' },
+        }),
+        authorize(), consumeAuthorize(), release(), results(), completedEvt(), consumeCompleted(),
+        note('If the TTL runs out first, ApprovalExpiryJob closes the approval (APPROVAL_EXPIRED) and sends REJECT_PLAN so the Orchestrator drops the pending plan.'),
+      ],
+    },
+    {
+      key: 'opa-down', name: 'OPA unavailable',
+      intro: 'OPA does not answer. Governance fails closed: the request parks in EVALUATION_ERROR, nothing is published, and the client gets a 503 it can retry.',
+      steps: [
+        submit(),
+        stage1({ tone: 'error', label: 'stage REQUEST (timeout)', detail: 'Connection timeout. Transient errors are retried a bounded number of times with backoff.' }),
+        opa('opa', 'governance', 'no decision', {
+          tone: 'error', dashed: true,
+          detail: 'The decision type becomes ERROR. The same happens when OPA answers but its provenance revision differs from the ACTIVE bundle, or when the Java aggregate disagrees with decision.rego.',
+          fields: { type: 'ERROR' },
+        }),
+        internal('governance', 'fail closed', {
+          tone: 'error', status: 'EVALUATION_ERROR',
+          detail: 'Nothing is published. The request stays retryable: a later evaluation can still move it to SUBMITTED, STAGE1_DENIED or PENDING_APPROVAL_STAGE1.',
+        }),
+        http('governance', 'client', '503 Service Unavailable', {
+          tone: 'error', detail: 'The health endpoint reports the opa indicator as DOWN. Operators: see the runbook’s failure modes and OPA revision diagnostics.',
+          fields: { health: '/actuator/health → opa DOWN' },
+        }),
+      ],
+    },
+  ];
+
+  // Status names and which are terminal: copied from RequestStatus.java.
+  const TERMINAL = new Set(['STAGE1_DENIED', 'PLAN_REJECTED', 'APPROVAL_EXPIRED', 'STALE_PLAN', 'REJECTED_BY_ORCHESTRATOR', 'COMPLETED', 'FAILED']);
+  const STATUS_TONE = { COMPLETED: 'ok', SUBMITTED: 'info', PLAN_PROPOSED: 'info', PLAN_AUTHORIZED: 'info', RECEIVED: 'info', STAGE1_DENIED: 'deny', PLAN_REJECTED: 'deny', FAILED: 'deny', REJECTED_BY_ORCHESTRATOR: 'deny', STALE_PLAN: 'deny', EVALUATION_ERROR: 'error', PENDING_APPROVAL_STAGE1: 'approval', PENDING_APPROVAL_STAGE2: 'approval', APPROVAL_EXPIRED: 'approval' };
+
+  // ---------- state ----------
+  const state = { scenario: SCENARIOS[0], index: -1, playing: false, speed: 1, timer: null };
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const $ = (id) => document.getElementById(id);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const W = 1120, COL = W / PARTICIPANTS.length, HEAD = 64, ROW = 58, TOP = HEAD + 24;
+  const colIndex = Object.fromEntries(PARTICIPANTS.map((p, i) => [p.id, i]));
+  const xOf = (id) => colIndex[id] * COL + COL / 2;
+  const yOf = (i) => TOP + i * ROW + ROW / 2;
+  const clsOf = (s) => (s.tone ? 't-' + s.tone : 'k-' + s.kind);
+  const routeOf = (s) => s.kind === 'note' ? '' : (s.from === s.to ? nameOf(s.from) : nameOf(s.from) + ' → ' + nameOf(s.to));
+  const nameOf = (id) => PARTICIPANTS[colIndex[id]].name;
+
+  function el(tag, attrs = {}, text) {
+    const n = document.createElementNS(svgNS, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  // ---------- rendering ----------
+  function renderLanes() {
+    const lanes = $('lanes');
+    lanes.setAttribute('viewBox', `0 0 ${W} ${HEAD}`);
+    for (const p of PARTICIPANTS) {
+      const x = xOf(p.id);
+      lanes.appendChild(el('rect', { class: 'lane-box', x: x - 72, y: 6, width: 144, height: 50, rx: 8 }));
+      lanes.appendChild(el('text', { class: 'lane-name', x, y: 28, 'text-anchor': 'middle' }, p.name));
+      lanes.appendChild(el('text', { class: 'lane-sub', x, y: 45, 'text-anchor': 'middle' }, p.sub));
+    }
+  }
+
+  function renderSvg(animateLast) {
+    const svg = $('svg');
+    const steps = state.scenario.steps;
+    const shown = state.index + 1;
+    const height = TOP + Math.max(shown, 1) * ROW + 16;
+    svg.setAttribute('viewBox', `0 ${HEAD} ${W} ${height - HEAD}`);
+    while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
+
+    const defs = el('defs');
+    for (const c of ['k-http', 'k-cmd', 'k-evt', 'k-opa', 'k-other', 'k-internal', 't-ok', 't-deny', 't-error', 't-approval']) {
+      const m = el('marker', { id: 'arrow-' + c, class: c, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '8', markerHeight: '8', orient: 'auto-start-reverse' });
+      m.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z' }));
+      defs.appendChild(m);
+    }
+    svg.appendChild(defs);
+
+    for (const p of PARTICIPANTS) {
+      const x = xOf(p.id);
+      svg.appendChild(el('line', { class: 'lifeline', x1: x, y1: HEAD, x2: x, y2: height - 8 }));
+    }
+
+    for (let i = 0; i < shown; i++) {
+      const s = steps[i];
+      const g = el('g', { class: 'step ' + clsOf(s) + (i < state.index ? ' past' : '') });
+      const y = yOf(i);
+      if (s.kind === 'note') {
+        g.appendChild(el('rect', { class: 'banner-box', x: 24, y: y - 18, width: W - 48, height: 36, rx: 8 }));
+        g.appendChild(el('text', { class: 'banner-text', x: W / 2, y: y + 4, 'text-anchor': 'middle' }, s.label));
+      } else if (s.from === s.to) {
+        const x = xOf(s.from);
+        const w = Math.min(Math.max(s.label.length * 6.6 + 24, 120), COL * 1.9);
+        const box = el('rect', { class: 'note-box' + (i === state.index && animateLast ? ' pulse' : ''), x: x - w / 2, y: y - 17, width: w, height: 34, rx: 6 });
+        g.appendChild(box);
+        g.appendChild(el('text', { class: 'note-text', x, y: y + 4, 'text-anchor': 'middle' }, s.label));
+      } else {
+        const x1 = xOf(s.from), x2 = xOf(s.to);
+        const dir = x2 > x1 ? 1 : -1;
+        g.appendChild(el('line', { class: 'msg' + (s.dashed ? ' dashed' : ''), x1, y1: y, x2: x2 - dir * 4, y2: y, 'marker-end': `url(#arrow-${clsOf(s)})` }));
+        g.appendChild(el('text', { class: 'msg-label', x: (x1 + x2) / 2, y: y - 9, 'text-anchor': 'middle' }, s.label));
+        if (i === state.index && animateLast && !reduced.matches) {
+          const tok = el('circle', { class: 'token', r: 7, cx: 0, cy: y });
+          g.appendChild(tok);
+          const anim = tok.animate([{ transform: `translateX(${x1}px)` }, { transform: `translateX(${x2 - dir * 8}px)` }],
+            { duration: 650 / state.speed, easing: 'ease-in-out', fill: 'forwards' });
+          anim.onfinish = () => tok.remove();
+        }
+      }
+      svg.appendChild(g);
+    }
+    if (shown === 0) {
+      svg.appendChild(el('text', { class: 'lane-sub', x: W / 2, y: TOP + 30, 'text-anchor': 'middle' }, 'Press play or → to start'));
+    }
+    const container = svg.parentElement;
+    if (shown > 0) {
+      const ratio = svg.clientWidth / W;
+      const header = $('lanes').parentElement.offsetHeight;
+      const target = (yOf(state.index) - HEAD) * ratio + header - container.clientHeight * 0.6;
+      container.scrollTo({ top: Math.max(0, target), behavior: reduced.matches ? 'auto' : 'smooth' });
+    }
+  }
+
+  function renderLog() {
+    const log = $('log');
+    log.replaceChildren();
+    state.scenario.steps.forEach((s, i) => {
+      const li = document.createElement('li');
+      li.className = i === state.index ? 'current' : (i > state.index ? 'future' : '');
+      li.tabIndex = 0;
+      li.setAttribute('aria-current', i === state.index ? 'step' : 'false');
+      const title = document.createElement('div');
+      title.className = 'title';
+      title.append(Object.assign(document.createElement('span'), { className: 'n', textContent: String(i + 1) }));
+      title.append(document.createTextNode(s.label));
+      if (s.status) {
+        const pill = document.createElement('span');
+        pill.className = 'pill ' + (STATUS_TONE[s.status] || '') + (TERMINAL.has(s.status) ? ' terminal' : '');
+        pill.textContent = s.status;
+        title.append(pill);
+      }
+      const route = routeOf(s);
+      if (route) title.append(Object.assign(document.createElement('span'), { className: 'route', textContent: route }));
+      li.append(title);
+      if (s.detail) li.append(Object.assign(document.createElement('p'), { className: 'detail', textContent: s.detail }));
+      if (s.fields) {
+        const f = document.createElement('div');
+        f.className = 'fields';
+        for (const [k, v] of Object.entries(s.fields)) {
+          const c = document.createElement('code');
+          c.append(Object.assign(document.createElement('b'), { textContent: k + ' ' }), document.createTextNode(String(v)));
+          f.append(c);
+        }
+        li.append(f);
+      }
+      const go = () => { pause(); setIndex(i, false); };
+      li.addEventListener('click', go);
+      li.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+      log.append(li);
+    });
+    const cur = log.querySelector('.current');
+    const panel = log.parentElement;
+    if (cur) panel.scrollTo({ top: Math.max(0, cur.offsetTop - panel.clientHeight / 2 + cur.offsetHeight / 2), behavior: reduced.matches ? 'auto' : 'smooth' });
+  }
+
+  function renderStatus() {
+    const visited = [];
+    state.scenario.steps.slice(0, state.index + 1).forEach((s) => { if (s.status) visited.push(s.status); });
+    const current = visited[visited.length - 1];
+    const pill = $('status');
+    pill.textContent = current || '—';
+    pill.className = 'pill ' + (current ? (STATUS_TONE[current] || '') + (TERMINAL.has(current) ? ' terminal' : '') : '');
+    const trail = $('trail');
+    trail.replaceChildren();
+    visited.forEach((st, i) => {
+      if (i > 0) trail.append(Object.assign(document.createElement('span'), { className: 'arrow', textContent: '→' }));
+      trail.append(Object.assign(document.createElement('code'), { textContent: st }));
+    });
+    const total = state.scenario.steps.length;
+    $('progress').textContent = `${Math.max(state.index + 1, 0)} / ${total}`;
+    $('prev').disabled = state.index < 0;
+    $('next').disabled = state.index >= total - 1;
+    $('play').textContent = state.playing ? 'Pause' : (state.index >= total - 1 ? 'Replay' : 'Play');
+  }
+
+  function renderTabs() {
+    const tabs = $('tabs');
+    tabs.replaceChildren();
+    for (const sc of SCENARIOS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.role = 'tab'; b.textContent = sc.name;
+      b.setAttribute('aria-selected', String(sc === state.scenario));
+      b.addEventListener('click', () => selectScenario(sc.key, true));
+      tabs.append(b);
+    }
+    $('intro').textContent = state.scenario.intro;
+  }
+
+  function render(animateLast) {
+    renderSvg(animateLast);
+    renderLog();
+    renderStatus();
+    history.replaceState(null, '', `#s=${state.scenario.key}&i=${state.index + 1}`);
+  }
+
+  // ---------- control ----------
+  function setIndex(i, animate) {
+    const max = state.scenario.steps.length - 1;
+    state.index = Math.max(-1, Math.min(max, i));
+    render(animate);
+  }
+  function next(animate = true) { if (state.index < state.scenario.steps.length - 1) setIndex(state.index + 1, animate); }
+  function prev() { setIndex(state.index - 1, false); }
+  function tick() {
+    if (!state.playing) return;
+    if (state.index >= state.scenario.steps.length - 1) { pause(); return; }
+    next(true);
+    const s = state.scenario.steps[state.index];
+    const dwell = (s.kind === 'note' || s.from === s.to ? 1900 : 1500) / state.speed;
+    state.timer = setTimeout(tick, dwell);
+  }
+  function play() {
+    if (state.index >= state.scenario.steps.length - 1) state.index = -1;
+    state.playing = true; renderStatus(); tick();
+  }
+  function pause() { state.playing = false; clearTimeout(state.timer); state.timer = null; renderStatus(); }
+  function selectScenario(key, reset) {
+    const sc = SCENARIOS.find((s) => s.key === key) || SCENARIOS[0];
+    pause();
+    state.scenario = sc;
+    if (reset) state.index = -1;
+    renderTabs();
+    render(false);
+  }
+
+  $('play').addEventListener('click', () => (state.playing ? pause() : play()));
+  $('next').addEventListener('click', () => { pause(); next(true); });
+  $('prev').addEventListener('click', () => { pause(); prev(); });
+  $('restart').addEventListener('click', () => { pause(); setIndex(-1, false); });
+  $('speed').addEventListener('change', (e) => { state.speed = Number(e.target.value) || 1; });
+  document.addEventListener('keydown', (e) => {
+    const tag = e.target.tagName;
+    if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.key === ' ' && tag === 'BUTTON') return;
+    if (e.key === ' ') { e.preventDefault(); state.playing ? pause() : play(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); pause(); next(true); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prev(); }
+    else if (e.key === 'Home') { e.preventDefault(); pause(); setIndex(-1, false); }
+  });
+  window.addEventListener('resize', () => renderSvg(false));
+
+  // theme toggle: auto -> dark -> light -> auto
+  const themeBtn = $('theme');
+  const THEMES = ['auto', 'dark', 'light'];
+  let themeIdx = 0;
+  themeBtn.addEventListener('click', () => {
+    themeIdx = (themeIdx + 1) % THEMES.length;
+    const t = THEMES[themeIdx];
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+    themeBtn.textContent = 'Theme: ' + t;
+  });
+
+  // boot from the URL hash (#s=<scenario>&i=<step>) so a step can be linked; re-read it when the hash changes
+  function bootFromHash() {
+    const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const sc = SCENARIOS.find((s) => s.key === params.get('s')) || SCENARIOS[0];
+    const startAt = Number(params.get('i'));
+    const idx = Number.isFinite(startAt) && startAt > 0 ? Math.min(startAt, sc.steps.length) - 1 : -1;
+    if (sc === state.scenario && idx === state.index) return;
+    pause();
+    state.scenario = sc;
+    state.index = idx;
+    renderTabs();
+    render(false);
+  }
+  window.addEventListener('hashchange', bootFromHash);
+  renderLanes();
+  bootFromHash();
+})();
+</script>
+</body>
+</html>
