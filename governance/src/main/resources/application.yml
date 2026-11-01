@@ -18,6 +18,9 @@ spring:
 server:
   port: ${GOVERNANCE_PORT:8080}
 
+# Policy bundles are uploaded base64-encoded inside a JSON body; allow a few MB.
+spring.codec.max-in-memory-size: ${GOVERNANCE_MAX_BODY:8MB}
+
 governance:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

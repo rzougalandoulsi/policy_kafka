@@ -116,13 +116,29 @@ public final class PlatformContainers {
   }
 
   private static void ensureBundle() {
-    if (Files.exists(BUNDLE) && Files.exists(TEST_REPORT)) return;
+    if (Files.exists(BUNDLE) && Files.exists(TEST_REPORT) && !bundleIsStale()) return;
     log.info("Building the OPA bundle with policies/build.sh");
     try {
       Process p = new ProcessBuilder(POLICIES_DIR.resolve("build.sh").toString(), "it-local").inheritIO().start();
       if (p.waitFor() != 0) throw new IllegalStateException("policies/build.sh failed");
     } catch (IOException | InterruptedException e) {
       throw new IllegalStateException("Unable to build the policy bundle", e);
+    }
+  }
+
+  /** A bundle older than any policy source would make the tests exercise stale Rego. */
+  private static boolean bundleIsStale() {
+    try (var sources = Files.list(POLICIES_DIR.resolve("governance"))) {
+      var built = Files.getLastModifiedTime(BUNDLE);
+      return sources.anyMatch(f -> {
+        try {
+          return Files.getLastModifiedTime(f).compareTo(built) > 0;
+        } catch (IOException e) {
+          return true;
+        }
+      });
+    } catch (IOException e) {
+      return true;
     }
   }
 

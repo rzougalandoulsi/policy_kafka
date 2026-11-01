@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f3f6;
+  --color-border: #e2e6ec;
+  --color-text: #15202b;
+  --color-muted: #5b6878;
+  --color-primary: #1d4ed8;
+  --color-primary-hover: #1e40af;
+  --color-primary-fg: #ffffff;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fee2e2;
+  --color-warn: #b45309;
+  --color-warn-bg: #fef3c7;
+  --color-ok: #15803d;
+  --color-ok-bg: #dcfce7;
+  --color-info: #1d4ed8;
+  --color-info-bg: #dbeafe;
+  --color-neutral-bg: #e5e7eb;
+  --color-focus: #2563eb;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--font-mono);
+}

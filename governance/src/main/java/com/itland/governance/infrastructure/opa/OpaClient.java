@@ -16,6 +16,7 @@ import reactor.netty.http.client.HttpClient;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
@@ -74,6 +75,20 @@ public class OpaClient {
         .onErrorMap(OpaClient::mapError);
   }
 
+  /**
+   * Policy catalogue declared by the active bundle (data.governance.catalog.policies): id, kind, severity,
+   * bypassable flag, section, stages, description. Empty when no bundle is loaded.
+   */
+  public Mono<List<Map<String, Object>>> catalog() {
+    return client.get()
+        .uri("/v1/data/governance/catalog/policies")
+        .retrieve()
+        .onStatus(HttpStatusCode::is5xxServerError, r -> r.createException().map(e -> new OpaException("OPA server error " + r.statusCode(), e, true)))
+        .bodyToMono(CatalogResult.class)
+        .map(r -> r.result() == null ? List.<Map<String, Object>>of() : r.result())
+        .onErrorMap(OpaClient::mapError);
+  }
+
   public Mono<Boolean> healthy() {
     return client.get().uri("/health?bundles=true").retrieve().toBodilessEntity()
         .map(e -> e.getStatusCode().is2xxSuccessful())
@@ -97,4 +112,7 @@ public class OpaClient {
 
   @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
   record RevisionResult(String result) {}
+
+  @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+  record CatalogResult(List<Map<String, Object>> result) {}
 }

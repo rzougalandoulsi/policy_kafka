@@ -18,6 +18,7 @@ PLAN_AUTHORIZED → COMPLETED | FAILED | STALE_PLAN | REJECTED_BY_ORCHESTRATOR
 | `/api/v1/admin/policy-configurations` | admin (read: auditor) | draft → activate → rollback, audited |
 | `/api/v1/admin/policy-bundles` | admin (read: auditor) | upload built bundle + test report, activate, rollback, `diagnostics` |
 | `/api/v1/admin/exceptions` | admin (read: auditor) | create / revoke scoped exceptions |
+| `GET /api/v1/admin/policies` | auditor | policy catalogue of the active bundle (`catalog.rego`): id, kind, severity, bypassable, section; 503 when OPA is unreachable |
 | `/api/v1/admin/approval-configurations` | admin | approver roles, quorum, SoD, TTL |
 | `/api/v1/admin/audit`, `/api/v1/admin/dead-letters` | auditor / admin | |
 | `GET /internal/opa/bundles/governance` | static bearer token (OPA only) | ETag / 304 |

@@ -141,6 +141,28 @@ services:
       timeout: 5s
       retries: 30
 
+  # Admin console (React SPA behind nginx). nginx proxies /api -> governance and /oidc -> mock-oidc with the
+  # issuer host, so the browser stays same-origin and tokens carry the `iss` Governance validates.
+  admin-ui:
+    build: ../admin-ui
+    depends_on:
+      governance: { condition: service_healthy }
+    ports: ["3000:80"]
+    environment:
+      GOVERNANCE_URL: http://governance:8080
+      OIDC_UPSTREAM_URL: http://mock-oidc:8080
+      OIDC_UPSTREAM_HOST: mock-oidc:8080
+      OIDC_ISSUER: http://mock-oidc:8080/default
+      OIDC_CLIENT_ID: ${ADMIN_UI_OIDC_CLIENT_ID:-admin-1}
+      OIDC_SCOPE: openid governance
+      OIDC_ENDPOINT_BASE: /oidc/default
+      DEV_TOKEN_LOGIN: ${ADMIN_UI_DEV_TOKEN_LOGIN:-true}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/healthz >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
   # Stand-in for the real Orchestrator (not provided here): speaks the documented two-topic contract, in-memory state.
   orchestrator-simulator:
     build: ../orchestrator-simulator

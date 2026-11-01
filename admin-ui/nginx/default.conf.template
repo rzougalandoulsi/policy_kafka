@@ -1,0 +1,62 @@
+# Rendered by the nginx entrypoint (envsubst on ${VARS}). Same-origin reverse proxy for the admin UI.
+map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+
+# Cache policy per path, applied by one server-level add_header: nginx drops server-level headers in any
+# location that declares its own add_header, so no location below may use add_header.
+map $uri $spa_cache_control {
+    ~^/assets/   "public, max-age=31536000, immutable";
+    /env.js      "no-store";
+    default      "no-cache";
+}
+
+server {
+    listen ${NGINX_PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Hardening: the SPA ships no inline scripts; styles are inlined by Tailwind at build time.
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy no-referrer always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ${OIDC_ISSUER}; frame-ancestors 'none'; base-uri 'self'; form-action 'self' ${OIDC_ISSUER}" always;
+    add_header Cache-Control $spa_cache_control always;
+
+    location = /healthz { default_type text/plain; return 200 'ok'; }
+
+    # Upstreams are resolved lazily (variables + resolver) so this container starts and keeps serving even
+    # while Governance or the identity provider restart. ${NGINX_LOCAL_RESOLVERS} is set by the nginx image.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+    set $governance_upstream ${GOVERNANCE_URL};
+    set $oidc_upstream ${OIDC_UPSTREAM_URL};
+
+    # Governance API. /internal/opa/** is deliberately not proxied.
+    location /api/ {
+        proxy_pass $governance_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+        client_max_body_size 16m;
+    }
+
+    # Identity provider through the same origin. The Host header is forced to the issuer host so the
+    # tokens it mints carry exactly the `iss` Governance validates (mock-oauth2-server derives it from Host).
+    location /oidc/ {
+        rewrite ^/oidc/(.*)$ /$1 break;
+        proxy_pass $oidc_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host ${OIDC_UPSTREAM_HOST};
+        proxy_redirect off;
+    }
+
+    location /assets/ {
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri /index.html;
+    }
+}

@@ -3,6 +3,7 @@ package com.itland.governance.api;
 import com.itland.governance.application.approvals.ApprovalService;
 import com.itland.governance.application.policy.NotFoundException;
 import com.itland.governance.application.submission.SubmissionExceptions;
+import com.itland.governance.infrastructure.opa.OpaException;
 import com.itland.governance.infrastructure.security.AccessDeniedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,6 +66,13 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header("Retry-After", "10")
         .body(new ApiError("POLICY_EVALUATION_UNAVAILABLE", "The policy engine could not evaluate the request; it was recorded and can be retried with the same Idempotency-Key",
             Instant.now(), List.of(), Map.of("requestId", e.decision().requestId(), "decisionId", e.decision().id())));
+  }
+
+  @ExceptionHandler(OpaException.class)
+  public ResponseEntity<ApiError> policyEngine(OpaException e) {
+    log.warn("Policy engine unavailable: {}", e.getMessage());
+    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header("Retry-After", "10")
+        .body(ApiError.of("POLICY_ENGINE_UNAVAILABLE", "The policy engine could not answer: " + e.getMessage()));
   }
 
   @ExceptionHandler(IllegalStateException.class)

@@ -6,3 +6,8 @@ target/
 *.log
 /deploy/.env
 policies/dist/
+admin-ui/node_modules/
+admin-ui/dist/
+admin-ui/coverage/
+admin-ui/openapi.json
+admin-ui/src/api/schema.d.ts

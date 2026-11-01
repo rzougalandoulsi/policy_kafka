@@ -1,0 +1,234 @@
+/**
+ * Hand-maintained mirror of the Governance API records (governance/src/main/java/.../api and domain).
+ * Instants are ISO-8601 strings. Run scripts/gen-api.sh to compare against the live OpenAPI document.
+ */
+
+export type VersionStatus = 'DRAFT' | 'UPLOADED' | 'ACTIVE' | 'RETIRED' | 'FAILED';
+
+/** api/ApiError.java */
+export interface ApiErrorBody {
+  code: string;
+  message: string;
+  timestamp: string;
+  errors: string[];
+  details: Record<string, unknown>;
+}
+
+/** domain/exception/PolicyException.java */
+export interface PolicyException {
+  id: string;
+  policyId: string;
+  principalId: string | null;
+  teamId: string;
+  environment: string;
+  resourcePattern: string;
+  actionTypes: string[];
+  reason: string;
+  expiresAt: string;
+  createdBy: string;
+  createdAt: string;
+  revokedBy: string | null;
+  revokedAt: string | null;
+  revokeReason: string | null;
+}
+
+/** ExceptionAdminController.CreateBody */
+export interface CreateExceptionBody {
+  policyId: string;
+  principalId?: string | null;
+  teamId: string;
+  environment?: string | null;
+  resourcePattern?: string | null;
+  actionTypes?: string[];
+  expiresAt: string;
+  reason: string;
+}
+
+/** domain/policy/PolicyConfiguration.java */
+export interface PolicyConfiguration {
+  id: string;
+  version: number;
+  content: PolicyConfigurationContent;
+  status: VersionStatus;
+  comment: string | null;
+  createdBy: string;
+  createdAt: string;
+  activatedAt: string | null;
+  retiredAt: string | null;
+}
+
+/** Shape seeded by V2__policy_management.sql; validated by PolicyConfigurationService.validate. */
+export interface PolicyConfigurationContent {
+  naming: {
+    topicPattern: string;
+    requireTeamPrefix: boolean;
+    teamPrefixSeparator: string;
+    environmentRestrictions: Record<string, { forbiddenPatterns: string[] }>;
+    [k: string]: unknown;
+  };
+  rbac: {
+    allowedRoles: string[];
+    forbiddenRoles: string[];
+    environmentRoles: Record<string, string[]>;
+    teamRoles: Record<string, string[]>;
+    sensitiveRoles: string[];
+    [k: string]: unknown;
+  };
+  limits: {
+    maxTopicsPerManifest: number;
+    maxPartitionsPerTopic: number;
+    maxPartitionsPerPlan: number;
+    maxRetentionMs: number;
+    environmentOverrides: Record<
+      string,
+      Partial<
+        Record<
+          'maxTopicsPerManifest' | 'maxPartitionsPerTopic' | 'maxPartitionsPerPlan' | 'maxRetentionMs',
+          number
+        >
+      >
+    >;
+    [k: string]: unknown;
+  };
+  destructive: {
+    topicDeleteAllowedEnvironments: string[];
+    rbacRevokeAllowedEnvironments: string[];
+    identityPoolDeleteAllowedEnvironments: string[];
+    [k: string]: unknown;
+  };
+  approvals: {
+    productionTopicDeletion: boolean;
+    highImpactPartitionThreshold: number;
+    sensitiveRoleAssignment: boolean;
+    sensitiveEnvironments: string[];
+    [k: string]: unknown;
+  };
+  [k: string]: unknown;
+}
+
+/** PolicyConfigurationAdminController.CreateBody */
+export interface CreatePolicyConfigurationBody {
+  content: PolicyConfigurationContent | Record<string, unknown>;
+  comment?: string | null;
+}
+
+/** domain/policy/PolicyBundleVersion.java */
+export interface PolicyBundleVersion {
+  id: string;
+  revision: string;
+  sha256: string;
+  manifest: Record<string, unknown>;
+  testReport: { passed?: number; names?: string[] } | null;
+  status: VersionStatus;
+  comment: string | null;
+  uploadedBy: string;
+  uploadedAt: string;
+  activatedAt: string | null;
+  retiredAt: string | null;
+  failureReason: string | null;
+}
+
+/** PolicyBundleAdminController.UploadBody */
+export interface UploadBundleBody {
+  bundleBase64: string;
+  testReportJson: string;
+  comment?: string | null;
+}
+
+/** PolicyBundleService.RevisionDiagnostics */
+export interface RevisionDiagnostics {
+  activeRevision: string | null;
+  opaRevision: string | null;
+  match: boolean;
+}
+
+/** domain/policy/ApprovalConfiguration.java */
+export interface ApprovalConfiguration {
+  id: string;
+  version: number;
+  approverRoles: string[];
+  requiredApprovals: number;
+  separationOfDuties: boolean;
+  ttlHours: number;
+  status: VersionStatus;
+  createdBy: string;
+  createdAt: string;
+  activatedAt: string | null;
+}
+
+/** ApprovalConfigurationAdminController.CreateBody */
+export interface CreateApprovalConfigurationBody {
+  approverRoles: string[];
+  requiredApprovals: number;
+  separationOfDuties: boolean;
+  ttlHours: number;
+}
+
+/** AuditRepository.AuditEntry */
+export interface AuditEntry {
+  id: number;
+  occurredAt: string;
+  actorId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  requestId: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface AuditQuery {
+  targetType?: string;
+  targetId?: string;
+  requestId?: string;
+  actor?: string;
+  since?: string;
+  limit?: number;
+}
+
+/** DeadLetterRepository.DeadLetter */
+export interface DeadLetter {
+  id: number;
+  topic: string;
+  partition: number;
+  offset: number;
+  key: string | null;
+  eventId: string | null;
+  requestId: string | null;
+  reason: string;
+  error: string | null;
+  recordedAt: string;
+  resolvedAt: string | null;
+}
+
+/** policies/governance/catalog.rego via GET /api/v1/admin/policies */
+export interface CatalogPolicy {
+  policyId: string;
+  kind: 'VIOLATION' | 'APPROVAL';
+  section: 'naming' | 'rbac' | 'limits' | 'destructive' | 'approvals';
+  severity: 'HARD_DENY' | 'DENY' | 'REQUIRE_APPROVAL';
+  bypassable: boolean;
+  stages: Array<'REQUEST' | 'ACTION_PLAN'>;
+  resourceType: string;
+  description: string;
+}
+
+/** Action types the Orchestrator emits (contracts + simulator); exceptions may be scoped to them. */
+export const KNOWN_ACTION_TYPES = [
+  'TOPIC_CREATE',
+  'TOPIC_UPDATE',
+  'TOPIC_DELETE',
+  'RBAC_ASSIGN',
+  'RBAC_REVOKE',
+  'IDENTITY_POOL_CREATE',
+  'IDENTITY_POOL_DELETE',
+] as const;
+
+export const AUDIT_TARGET_TYPES = [
+  'policy_exception',
+  'policy_configuration',
+  'policy_bundle',
+  'approval_configuration',
+  'approval_request',
+  'manifest_request',
+  'kafka_dead_letter',
+] as const;

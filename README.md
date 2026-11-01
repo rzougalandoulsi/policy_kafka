@@ -7,6 +7,7 @@ Three services around a Kafka backbone:
 | **Governance** (new) | Public REST entry point: OAuth2 JWT, OPA policy evaluation (two stages), approvals, scoped exceptions, audit, Kafka handshake | `governance/` |
 | **Orchestrator** (existing, not implemented here) | Diff desired vs confirmed state, propose immutable plans, release only authorized plans, reconcile results | stand-in: `orchestrator-simulator/`; requirements: `docs/orchestrator-integration.md` |
 | **Processor** (existing, not implemented here) | Executes actions against Confluent Cloud | stand-in: `processor-simulator/` |
+| **Admin UI** (new) | Browser console for policy configuration, Rego bundles, scoped exceptions, approval rules and audit (OIDC login, roles from the token, API stays the enforcer) | `admin-ui/` |
 
 Supporting pieces: `contracts/` (shared Avro schemas), `policies/` (Rego v1 bundle + tests), `deploy/` (Docker Compose with SASL/ACLs, OPA, mock OIDC), `docs/`.
 
@@ -34,6 +35,7 @@ Exactly two topics carry the Governance↔Orchestrator protocol: `requests.manif
 mvn -q verify                 # unit tests + Testcontainers end-to-end test (Docker required)
 policies/test.sh              # Rego unit tests (OPA in Docker)
 policies/build.sh [revision]  # check + test + build policies/dist/governance-bundle.tar.gz
+cd admin-ui && pnpm install && pnpm lint && pnpm test && pnpm build   # admin console (Node 20+, pnpm)
 ```
 
 ## Run locally
@@ -49,6 +51,9 @@ deploy/scripts/submit-manifest.sh docs/examples/manifest.json
 Tokens for the mock identity provider (host port 18089): `deploy/scripts/token.sh dev-1|approver-1|admin-1|outsider`. Postgres is published on 15432.
 OpenAPI UI: http://localhost:8080/swagger-ui.html. Metrics: http://localhost:8080/actuator/prometheus.
 
+Admin console: http://localhost:3000 — "Sign in with OIDC" signs you in as `admin-1` (the mock provider has no login
+page); auditors can use `deploy/scripts/token.sh` with the dev token form. See `docs/admin-ui.md`.
+
 ## Documentation
 
 - `docs/repository-analysis.md` — what the existing Orchestrator prototype did and the gaps found
@@ -56,4 +61,5 @@ OpenAPI UI: http://localhost:8080/swagger-ui.html. Metrics: http://localhost:808
 - `docs/orchestrator-integration.md` — what the real Orchestrator must implement to join the handshake (the simulator mirrors it)
 - `docs/governance.md` — request lifecycle, decision model, policies, exceptions, approvals, dynamic policy management
 - `docs/runbook.md` — operations: metrics, health, dead letters, OPA revision diagnostics, failure modes
+- `docs/admin-ui.md` — the admin console: pages, roles, sign-in and proxy setup, configuration, troubleshooting
 - `docs/adr/` — architecture decision records

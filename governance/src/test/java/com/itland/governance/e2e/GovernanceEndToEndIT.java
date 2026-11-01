@@ -444,6 +444,19 @@ class GovernanceEndToEndIT {
 
   @Test
   @Order(16)
+  @SuppressWarnings("unchecked")
+  void policyCatalogueIsServedFromTheActiveBundle() {
+    client.get().uri("/api/v1/admin/policies").header("Authorization", "Bearer " + DEV).exchange().expectStatus().isForbidden();
+    List<Map<String, Object>> catalogue = client.get().uri("/api/v1/admin/policies").header("Authorization", "Bearer " + AUDITOR).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    assertThat(catalogue).hasSize(17);
+    Map<String, Object> hardDeny = catalogue.stream().filter(p -> "RBAC_ADMIN_ROLE_FORBIDDEN".equals(p.get("policyId"))).findFirst().orElseThrow();
+    assertThat(hardDeny).containsEntry("severity", "HARD_DENY").containsEntry("bypassable", false);
+    assertThat(catalogue.stream().filter(p -> Boolean.TRUE.equals(p.get("bypassable"))).count()).isEqualTo(13);
+  }
+
+  @Test
+  @Order(17)
   void observabilityEndpointsExposeTheMetrics() {
     client.get().uri("/actuator/health/readiness").exchange().expectStatus().isOk().expectBody().jsonPath("$.status").isEqualTo("UP");
     String prometheus = client.get().uri("/actuator/prometheus").exchange().expectStatus().isOk().expectBody(String.class).returnResult().getResponseBody();
