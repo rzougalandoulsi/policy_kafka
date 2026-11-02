@@ -70,6 +70,9 @@ git push git@github.com:ORG/governance-policies.git governance-policies-main:mai
       `check-contract-sync.sh` keeps guarding the schema copy. Alternatives: a submodule pinned to a tag, or an IT that
       downloads the signed revisions of `releases/dev.json` from Artifactory (needs network and the read token).
 - [ ] `ci.yml`'s "policies" job then runs `scripts/validate.sh` on the mirror only as a drift check, or is removed.
+- [ ] Decide where `docs/policy-inventory.html` is generated from: `scripts/inventory.sh --out <path> --release-files <dir>`
+      can write it into the mirror (it needs the release files of policy_kafka for the per-environment revisions); the
+      `--check` step is a no-op in the policy repository itself because no `../docs` exists there.
 - [ ] Branch protection on `deploy/helm/governance/releases/*.json`: required checks (`helm` render check), reviewers
       for staging and production files (`CODEOWNERS` on `deploy/helm/**`), auto-merge allowed for Workflow C's dev PRs.
 

@@ -90,6 +90,9 @@ jobs:
       - name: Fixture inputs, decision outputs and catalogue match the JSON schemas
         run: scripts/check-schemas.sh --outputs dist/fixture-outputs
 
+      - name: Rules and bundle inventory page is up to date (scripts/inventory.sh; no-op after the extraction)
+        run: scripts/inventory.sh --check
+
       - name: Set up Regal
         uses: open-policy-agent/setup-regal@761188c3b435761fa254beca508a44875619648f # v2.0.0
         with:

@@ -15,7 +15,7 @@ contracts/             input.schema.json  output.schema.json  catalog.schema.jso
 tests/*_test.rego      Rego unit tests over all six bundles (78)
 tests/fixtures/        inputs/*.json (contract 2.0, schema-validated)  expected/*.json (decision per input, minus revisions)
 tests/integration/     smoke.sh (opa run --server with signed artifacts), artifactory-standin/ (nginx), publish-local.sh, promote-local.sh, validate-negative.sh
-scripts/               opa.sh install-opa.sh build.sh validate.sh changed-bundles.sh check-*.sh eval-fixtures.sh lint.sh
+scripts/               opa.sh install-opa.sh build.sh validate.sh changed-bundles.sh check-*.sh eval-fixtures.sh lint.sh inventory.sh
                        build-release.sh release-manifest.sh assemble-release.sh publish.sh
                        verify-artifacts.sh promote.sh app-repo-pr.sh verify-active.sh mark-verified.sh
 .github/workflows/     validate.yml (A)  publish.yml (B)  promote.yml (C)  verify.yml (D)  rollback.yml (E);  .github/CODEOWNERS per bundle
@@ -36,6 +36,7 @@ the `openpolicyagent/opa:<OPA_VERSION>` image. No other OPA version is ever used
 | Local unsigned bundles + `dist/release.json` for the Compose stack and the Governance IT | `build.sh [revision]` |
 | Add a behaviour fixture | drop `tests/fixtures/inputs/<name>.json`, run `scripts/eval-fixtures.sh --update`, review `expected/<name>.json`, commit both |
 | Prove the gates reject broken trees | `tests/integration/validate-negative.sh` |
+| Regenerate the rules and bundle inventory page after a catalogue or rule change | `scripts/inventory.sh` (writes `../docs/policy-inventory.html`; `--check` is part of Workflow A) |
 | Exercise Workflow B end to end against a local Artifactory stand-in | `tests/integration/publish-local.sh` |
 | Exercise Workflows C, D (artifact half) and E against the stand-in | `tests/integration/promote-local.sh` |
 

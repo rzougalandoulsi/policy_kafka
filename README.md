@@ -65,5 +65,6 @@ page); auditors can use `deploy/scripts/token.sh` with the dev token form. See `
 - `docs/flow-animation.html` — animated walkthrough of the handshake as a sequence diagram and as a component map (services, Postgres tables, Kafka topics, clients, and the policy release supply chain: policy repository workflows, Artifactory, release file, OPA sidecar) that traces each scenario: happy path, hard deny, scoped exception, stage 2 approval, OPA unavailable; open the file from a checkout, GitHub shows only its source
 - `docs/runbook.md` — operations, the single entry point: metrics, health, dead letters, failure modes, release-mode operations (Artifactory outage, signature failure, a promotion that never becomes ready, rollback, signing key rotation, contract major bump)
 - `policies/docs/` — the policy repository's own guides: bundle authoring, contract, Workflows A to E operations, extraction checklist
+- `docs/policy-inventory.html` — generated rules and bundle inventory: every policy id with severity, bypassability, stages, inputs read, Rego location, tests and fixtures, plus the six bundles and the revision each environment pins (`policies/scripts/inventory.sh`; open from a checkout)
 - `docs/admin-ui.md` — the admin console: pages, roles, sign-in and proxy setup, configuration, troubleshooting
 - `docs/adr/` — architecture decision records

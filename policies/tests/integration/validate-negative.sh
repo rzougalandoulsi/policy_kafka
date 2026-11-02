@@ -17,7 +17,7 @@ expect_failure() {
   if "$@" > "$work/last.log" 2>&1; then
     echo "FAIL $label: command succeeded but must fail"; tail -5 "$work/last.log"; failures=$((failures + 1))
   else
-    echo "PASS $label: $(grep -m1 -E 'outside root|prefix of|FAIL|not allowed|forbidden|differs|required property|error|^\+' "$work/last.log" | cut -c1-110)"
+    echo "PASS $label: $(grep -m1 -E 'outside root|prefix of|FAIL|not allowed|forbidden|differs|required property|error|out of date|^\+' "$work/last.log" | cut -c1-110)"
   fi
 }
 
@@ -55,6 +55,11 @@ expect_failure "http.send in a policy: check-builtins" "$d/scripts/check-builtin
 d="$(fresh_copy lib-drift)"
 printf '\n# drift\n' >> "$d/bundles/quotas/lib.rego"
 expect_failure "lib copy drift: check-lib-sync" "$d/scripts/check-lib-sync.sh"
+
+d="$(fresh_copy stale-inventory)"
+cp ../docs/policy-inventory.html "$work/stale-inventory-docs.html"
+sed -i.bak 's/"description": "Topic names must match configuration naming.topicPattern."/"description": "changed"/' "$d/bundles/naming/naming.rego" && rm -f "$d/bundles/naming/naming.rego.bak"
+expect_failure "catalogue changed without regenerating the inventory page: inventory --check" "$d/scripts/inventory.sh" --check --out "$work/stale-inventory-docs.html"
 
 d="$(fresh_copy unformatted)"
 printf 'package governance.naming.ugly\n\nx   :=    1\n' > "$d/bundles/naming/ugly.rego"

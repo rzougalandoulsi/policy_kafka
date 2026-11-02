@@ -48,6 +48,8 @@ Aggregation (`DecisionAggregator`, mirrored in `bundles/core/core.rego`): HARD_D
 - **Configuration**: `policy_configuration` versions (naming patterns, roles, limits, destructive switches, approval thresholds, and the optional `enforcement` map `policyId -> enforce|shadow`) passed to OPA as `input.configuration`; every decision records the release id (`policyRevision`), the revision per bundle (`policyRevisions`) and `configurationVersion`.
 - **Shadow mode**: a policy set to `shadow` is evaluated and its findings are recorded (`shadow_finding`, `GET /api/v1/admin/shadow-findings`, metric `governance_shadow_findings_total{policyId,kind}`) but it never denies and never opens an approval. This is how new or migrated rules are soaked before they enforce (plan section 4.3).
 
+The generated page [`policy-inventory.html`](policy-inventory.html) lists every policy with its bundle, severity, bypassability, stages, the input it reads, its Rego location, tests and fixtures, and the revision each environment pins per bundle (`policies/scripts/inventory.sh`; Workflow A fails when it is stale).
+
 ## Scoped exceptions
 `{policyId, principalId?, teamId, environment|*, resourcePattern (glob), actionTypes[], expiresAt, reason}`; revocable, audited, admin-only. Governance resolves the valid candidates per (principal, team, environment) and OPA matches resource and action scope. Hard-deny policies ignore exceptions.
 

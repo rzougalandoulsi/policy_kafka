@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Everything Workflow A (validate.yml) runs, in the same order, so a change can be proven locally before the pull
 # request: fmt, check --strict, tests with coverage threshold, roots and imports, lib copies, forbidden builtins,
-# contract sync, fixtures and schemas, Regal lint, secret scan, per-bundle build dry run.
+# contract sync, fixtures and schemas, inventory page up to date, Regal lint, secret scan, per-bundle build dry run.
 #   SKIP_LINT=1 / SKIP_SECRETS=1 skip the two steps that need extra tools (never skipped in CI).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -33,6 +33,8 @@ step "fixtures: expected decisions"
 scripts/eval-fixtures.sh --out dist/fixture-outputs
 step "schemas: inputs, outputs, catalogue"
 scripts/check-schemas.sh --outputs dist/fixture-outputs
+step "inventory page (docs/policy-inventory.html) up to date"
+scripts/inventory.sh --check
 if [ "${SKIP_LINT:-0}" != 1 ]; then step "regal lint"; scripts/lint.sh bundles tests; fi
 if [ "${SKIP_SECRETS:-0}" != 1 ]; then
   step "gitleaks (${GITLEAKS_VERSION})"

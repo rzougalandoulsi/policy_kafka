@@ -1,0 +1,1591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policy inventory</title>
+<meta name="description" content="Rules and bundle inventory of the Kafka governance OPA policies: six bundles, every policy id with severity, bypassability, stages, inputs read, Rego location, tests and fixtures.">
+<!--
+  GENERATED FILE. Do not edit by hand: run policies/scripts/inventory.sh (Workflow A fails when this page is stale).
+  Sources: data.governance.core.policy_catalog, policies/bundles/*/, policies/tests/, deploy/helm/governance/releases/,
+  policies/.github/CODEOWNERS. Template: policies/scripts/lib/inventory-template.html.
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6676; --line: #d9dee6; --accent: #2457d6;
+    --ok: #0f8a5f; --deny: #c92a2a; --error: #b45309; --approval: #8a5a00; --bundle: #0b7285;
+    --ok-bg: #e5f6ee; --deny-bg: #fbe7e7; --error-bg: #fdf0df; --approval-bg: #fbf1d6; --info-bg: #e8eefb; --neutral-bg: #eef1f5;
+    --focus: #2457d6; --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .1);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #9aa4b2; --line: #2a323e; --accent: #7ea2ff;
+      --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d; --bundle: #5fd3e6;
+      --ok-bg: #12332a; --deny-bg: #3a1a1c; --error-bg: #3a2a14; --approval-bg: #38300f; --info-bg: #1b2740; --neutral-bg: #222a35;
+      --shadow: none; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #9aa4b2; --line: #2a323e; --accent: #7ea2ff;
+    --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d; --bundle: #5fd3e6;
+    --ok-bg: #12332a; --deny-bg: #3a1a1c; --error-bg: #3a2a14; --approval-bg: #38300f; --info-bg: #1b2740; --neutral-bg: #222a35;
+    --shadow: none; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 0 16px 40px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+  header { padding: 24px 0 12px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; justify-content: space-between; }
+  h1 { font-size: 22px; margin: 0; } h2 { font-size: 17px; margin: 22px 0 10px; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 80ch; }
+  .theme, .btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 14px; cursor: pointer; }
+  button:focus-visible, input:focus-visible, select:focus-visible, tr[tabindex]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 13px; background: var(--neutral-bg); border: 1px solid transparent; white-space: nowrap; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); } .pill.deny { background: var(--deny-bg); color: var(--deny); }
+  .pill.error { background: var(--error-bg); color: var(--error); } .pill.approval { background: var(--approval-bg); color: var(--approval); }
+  .pill.info { background: var(--info-bg); color: var(--accent); } .pill.bundle { background: var(--neutral-bg); color: var(--bundle); }
+  .pill.small { font-size: 12px; padding: 1px 8px; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
+  .card { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .card h3 { margin: 0; font-size: 16px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .card h3 .mono { color: var(--muted); font-weight: 400; font-size: 13px; }
+  .card .meta { color: var(--muted); font-size: 13px; }
+  .card .meta b { color: var(--ink); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 1px 6px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; cursor: pointer; }
+  .chip:hover { border-color: var(--accent); }
+  .rev { font-size: 12px; color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+  .rev code { font-size: 11.5px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; padding: 10px 12px; margin: 12px 0; position: sticky; top: 0; z-index: 2; }
+  .controls input, .controls select { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 14px; }
+  .controls input { min-width: 240px; flex: 1 1 240px; }
+  .controls .count { color: var(--muted); font-size: 13px; margin-left: auto; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+  thead th { border-top: 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  tbody tr.row { cursor: pointer; }
+  tbody tr.row:hover td { background: var(--neutral-bg); }
+  tbody tr.row[aria-expanded="true"] td { background: var(--info-bg); }
+  tbody tr.row td:first-child::before { content: "▸"; display: inline-block; width: 14px; color: var(--muted); }
+  tbody tr.row[aria-expanded="true"] td:first-child::before { content: "▾"; }
+  tr.detail td { background: var(--bg); padding: 10px 14px 14px 34px; }
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 24px; font-size: 13.5px; }
+  .detail-grid h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .detail-grid ul { margin: 0; padding-left: 18px; } .detail-grid li { margin: 2px 0; }
+  .detail p { margin: 0 0 10px; max-width: 100ch; }
+  .muted { color: var(--muted); }
+  .warn { border-color: var(--error); color: var(--error); padding: 8px 12px; margin: 10px 0; font-size: 13.5px; }
+  footer { margin-top: 24px; color: var(--muted); font-size: 13px; max-width: 110ch; }
+  @media (max-width: 760px) { th.opt, td.opt { display: none; } .controls .count { margin-left: 0; } }
+  @media print {
+    body { padding: 0; } .controls, .theme, .chip { display: none !important; } .panel { box-shadow: none; break-inside: avoid; }
+    tr.detail { display: table-row !important; } tbody tr.row td:first-child::before { content: ""; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>Policy inventory</h1>
+    <p>Every rule the six OPA bundles can emit and the bundle each one lives in: severity, whether a scoped exception can bypass it, the stages it runs at, what it reads from the input, where it is written, which tests and fixtures pin it, and the revision each environment pins per bundle. Generated by <code>policies/scripts/inventory.sh</code> from the catalogue and the sources; Workflow A fails when this page is stale.</p>
+  </div>
+  <button class="theme" id="theme" type="button" aria-label="Toggle colour theme">Theme: auto</button>
+</header>
+<noscript>This page needs JavaScript to render the inventory. The same data is the embedded JSON at the end of the file and <code>policies/dist/catalog.json</code>.</noscript>
+<div class="summary" id="summary"></div>
+<div id="warnings"></div>
+
+<h2>Bundles</h2>
+<div class="cards" id="bundles"></div>
+
+<h2>Rules</h2>
+<div class="panel controls" id="controls">
+  <input id="q" type="search" placeholder="Search id, description, inputs read…" aria-label="Search rules">
+  <select id="f-bundle" aria-label="Bundle"><option value="">All bundles</option></select>
+  <select id="f-kind" aria-label="Kind"><option value="">All kinds</option></select>
+  <select id="f-severity" aria-label="Severity"><option value="">All severities</option></select>
+  <select id="f-stage" aria-label="Stage"><option value="">All stages</option></select>
+  <select id="f-section" aria-label="Section"><option value="">All sections</option></select>
+  <select id="f-bypass" aria-label="Bypassable"><option value="">Bypassable: any</option><option value="true">Bypassable: yes</option><option value="false">Bypassable: no</option></select>
+  <button class="btn" id="expand" type="button">Expand all</button>
+  <button class="btn" id="reset" type="button">Reset</button>
+  <span class="count" id="count"></span>
+</div>
+<div class="panel" style="overflow-x: auto;">
+  <table id="rules" aria-describedby="count">
+    <thead><tr>
+      <th>Policy id</th><th>Bundle</th><th>Kind</th><th>Severity</th><th>Bypassable</th><th class="opt">Stages</th><th class="opt">Resource</th><th class="opt">Section</th><th class="opt">Tests · fixtures</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<footer id="footer"></footer>
+</div>
+<script id="inventory" type="application/json">{
+ "bundles": [
+  {
+   "contractVersion": "2.0",
+   "files": [
+    "authz.rego",
+    "core.rego",
+    "exceptions.rego",
+    "lib.rego"
+   ],
+   "name": "core",
+   "owners": [
+    "@ORG/governance-platform"
+   ],
+   "packages": [
+    "governance.core",
+    "governance.core.authz",
+    "governance.core.exceptions",
+    "governance.core.lib"
+   ],
+   "policies": [
+    "RBAC_ADMIN_ROLE_FORBIDDEN"
+   ],
+   "regoVersion": 1,
+   "roots": [
+    "governance/core"
+   ],
+   "testCount": 34,
+   "testFiles": [
+    "tests/authz_test.rego",
+    "tests/catalog_test.rego",
+    "tests/composition_test.rego",
+    "tests/decision_test.rego"
+   ]
+  },
+  {
+   "contractVersion": "2.0",
+   "files": [
+    "lib.rego",
+    "manifests.rego"
+   ],
+   "name": "manifests",
+   "owners": [
+    "@ORG/governance-platform"
+   ],
+   "packages": [
+    "governance.manifests",
+    "governance.manifests.lib"
+   ],
+   "policies": [
+    "REPOSITORY_OWNED_BY_OTHER_TEAM",
+    "RESOURCE_OWNED_BY_OTHER_REPOSITORY"
+   ],
+   "regoVersion": 1,
+   "roots": [
+    "governance/manifests"
+   ],
+   "testCount": 6,
+   "testFiles": [
+    "tests/manifests_test.rego"
+   ]
+  },
+  {
+   "contractVersion": "2.0",
+   "files": [
+    "lib.rego",
+    "naming.rego"
+   ],
+   "name": "naming",
+   "owners": [
+    "@ORG/governance-policy-authors"
+   ],
+   "packages": [
+    "governance.naming",
+    "governance.naming.lib"
+   ],
+   "policies": [
+    "AUTHORIZED_PREFIX_REQUIRED",
+    "ENV_NAME_RESTRICTION",
+    "TOPIC_NAME_PATTERN"
+   ],
+   "regoVersion": 1,
+   "roots": [
+    "governance/naming"
+   ],
+   "testCount": 12,
+   "testFiles": [
+    "tests/naming_test.rego"
+   ]
+  },
+  {
+   "contractVersion": "2.0",
+   "files": [
+    "lib.rego",
+    "quotas.rego"
+   ],
+   "name": "quotas",
+   "owners": [
+    "@ORG/governance-policy-authors",
+    "@ORG/governance-platform"
+   ],
+   "packages": [
+    "governance.quotas",
+    "governance.quotas.lib"
+   ],
+   "policies": [
+    "MAX_PARTITIONS_PER_PLAN",
+    "TEAM_QUOTA_EXCEEDED"
+   ],
+   "regoVersion": 1,
+   "roots": [
+    "governance/quotas"
+   ],
+   "testCount": 8,
+   "testFiles": [
+    "tests/quotas_test.rego"
+   ]
+  },
+  {
+   "contractVersion": "2.0",
+   "files": [
+    "lib.rego",
+    "limits.rego",
+    "rbac.rego",
+    "resources.rego"
+   ],
+   "name": "resources",
+   "owners": [
+    "@ORG/governance-policy-authors"
+   ],
+   "packages": [
+    "governance.resources",
+    "governance.resources.lib",
+    "governance.resources.limits",
+    "governance.resources.rbac"
+   ],
+   "policies": [
+    "MAX_PARTITIONS_PER_TOPIC",
+    "MAX_TOPICS_PER_MANIFEST",
+    "RBAC_ENV_RESTRICTED",
+    "RBAC_ROLE_ALLOWED",
+    "RBAC_TEAM_ROLE_ALLOWED",
+    "TOPIC_RETENTION_LIMIT"
+   ],
+   "regoVersion": 1,
+   "roots": [
+    "governance/resources"
+   ],
+   "testCount": 10,
+   "testFiles": [
+    "tests/limits_test.rego",
+    "tests/rbac_test.rego"
+   ]
+  },
+  {
+   "contractVersion": "2.0",
+   "files": [
+    "approval.rego",
+    "changes.rego",
+    "destructive.rego",
+    "lib.rego"
+   ],
+   "name": "changes",
+   "owners": [
+    "@ORG/governance-policy-authors",
+    "@ORG/governance-platform"
+   ],
+   "packages": [
+    "governance.changes",
+    "governance.changes.approval",
+    "governance.changes.destructive",
+    "governance.changes.lib"
+   ],
+   "policies": [
+    "HIGH_IMPACT_CHANGE_REQUIRES_APPROVAL",
+    "IDENTITY_POOL_DELETE_RESTRICTED",
+    "PROD_TOPIC_DELETE_REQUIRES_APPROVAL",
+    "RBAC_REVOKE_RESTRICTED",
+    "SENSITIVE_PERMISSION_REQUIRES_APPROVAL",
+    "TOPIC_DELETE_RESTRICTED"
+   ],
+   "regoVersion": 1,
+   "roots": [
+    "governance/changes"
+   ],
+   "testCount": 9,
+   "testFiles": [
+    "tests/approval_test.rego",
+    "tests/destructive_test.rego"
+   ]
+  }
+ ],
+ "fixtures": [
+  {
+   "decision": "DENY",
+   "matchedPolicies": [
+    "HIGH_IMPACT_CHANGE_REQUIRES_APPROVAL",
+    "MAX_PARTITIONS_PER_PLAN"
+   ],
+   "name": "plan-partitions-over-plan-limit",
+   "stage": "ACTION_PLAN"
+  },
+  {
+   "decision": "REQUIRE_APPROVAL",
+   "matchedPolicies": [
+    "PROD_TOPIC_DELETE_REQUIRES_APPROVAL"
+   ],
+   "name": "plan-prod-topic-deletion-requires-approval",
+   "stage": "ACTION_PLAN"
+  },
+  {
+   "decision": "DENY",
+   "matchedPolicies": [
+    "RBAC_ADMIN_ROLE_FORBIDDEN",
+    "RBAC_ENV_RESTRICTED"
+   ],
+   "name": "request-admin-role-hard-deny",
+   "stage": "REQUEST"
+  },
+  {
+   "decision": "ALLOW",
+   "matchedPolicies": [],
+   "name": "request-allow",
+   "stage": "REQUEST"
+  },
+  {
+   "decision": "ALLOW",
+   "matchedPolicies": [
+    "AUTHORIZED_PREFIX_REQUIRED"
+   ],
+   "name": "request-shadow-prefix",
+   "stage": "REQUEST"
+  },
+  {
+   "decision": "DENY",
+   "matchedPolicies": [
+    "TEAM_QUOTA_EXCEEDED"
+   ],
+   "name": "request-team-quota-exceeded",
+   "stage": "REQUEST"
+  },
+  {
+   "decision": "ALLOW",
+   "matchedPolicies": [
+    "AUTHORIZED_PREFIX_REQUIRED"
+   ],
+   "name": "request-unauthorized-prefix-exempted",
+   "stage": "REQUEST"
+  },
+  {
+   "decision": "DENY",
+   "matchedPolicies": [
+    "AUTHORIZED_PREFIX_REQUIRED"
+   ],
+   "name": "request-unauthorized-prefix",
+   "stage": "REQUEST"
+  }
+ ],
+ "policies": [
+  {
+   "bundle": "core",
+   "bypassable": false,
+   "description": "Administrative roles (rbac.forbiddenRoles) can never be granted; no exception and no approval applies.",
+   "exemptable": false,
+   "fixtures": [
+    "request-admin-role-hard-deny"
+   ],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/core/authz.rego",
+     "kind": "violation",
+     "line": 8
+    },
+    {
+     "file": "bundles/core/authz.rego",
+     "kind": "violation",
+     "line": 15
+    }
+   ],
+   "policyId": "RBAC_ADMIN_ROLE_FORBIDDEN",
+   "reads": [
+    "actions[]",
+    "configuration.rbac.forbiddenRoles",
+    "manifest.rbac, manifest.identityPools[].rbac"
+   ],
+   "resourceType": "RBAC",
+   "section": "rbac",
+   "severity": "HARD_DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST",
+    "ACTION_PLAN"
+   ],
+   "tests": [
+    {
+     "file": "tests/authz_test.rego",
+     "test": "test_admin_role_hard_deny_at_plan_stage"
+    },
+    {
+     "file": "tests/authz_test.rego",
+     "test": "test_admin_role_is_hard_deny"
+    },
+    {
+     "file": "tests/authz_test.rego",
+     "test": "test_pool_scoped_bindings_are_checked"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_exception_never_exempts_hard_deny"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_shadow_hard_deny_does_not_block_nor_suppress_approvals"
+    }
+   ]
+  },
+  {
+   "bundle": "manifests",
+   "bypassable": true,
+   "description": "A repository id whose confirmed state belongs to another team cannot be managed by this team.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/manifests/manifests.rego",
+     "kind": "violation",
+     "line": 20
+    }
+   ],
+   "policyId": "REPOSITORY_OWNED_BY_OTHER_TEAM",
+   "reads": [
+    "repository.id",
+    "repository.ownedByTeam"
+   ],
+   "resourceType": "REPOSITORY",
+   "section": "manifests",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/manifests_test.rego",
+     "test": "test_repository_owned_by_other_team"
+    }
+   ]
+  },
+  {
+   "bundle": "manifests",
+   "bypassable": true,
+   "description": "A topic or identity pool already owned by another repository (confirmed state) cannot be declared again.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/manifests/manifests.rego",
+     "kind": "violation",
+     "line": 11
+    }
+   ],
+   "policyId": "RESOURCE_OWNED_BY_OTHER_REPOSITORY",
+   "reads": [
+    "actions[]",
+    "manifest.identityPools",
+    "manifest.topics",
+    "repository.id"
+   ],
+   "resourceType": "TOPIC",
+   "section": "manifests",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST",
+    "ACTION_PLAN"
+   ],
+   "tests": [
+    {
+     "file": "tests/manifests_test.rego",
+     "test": "test_create_action_for_owned_topic_at_plan_stage"
+    },
+    {
+     "file": "tests/manifests_test.rego",
+     "test": "test_identity_pool_owned_by_other_repository"
+    },
+    {
+     "file": "tests/manifests_test.rego",
+     "test": "test_topic_owned_by_other_repository"
+    }
+   ]
+  },
+  {
+   "bundle": "naming",
+   "bypassable": true,
+   "description": "Topics must start with one of the team's authorised prefixes (team configuration) when naming.requireTeamPrefix is true.",
+   "exemptable": true,
+   "fixtures": [
+    "request-shadow-prefix",
+    "request-unauthorized-prefix-exempted",
+    "request-unauthorized-prefix"
+   ],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/naming/naming.rego",
+     "kind": "violation",
+     "line": 15
+    }
+   ],
+   "policyId": "AUTHORIZED_PREFIX_REQUIRED",
+   "reads": [
+    "configuration.naming.requireTeamPrefix",
+    "manifest.topics",
+    "team.authorizedPrefixes"
+   ],
+   "resourceType": "TOPIC",
+   "section": "naming",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_deny_on_violation"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_exception_exempts_bypassable_violation"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_exception_principal_scope"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_exception_resource_scope_must_match"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_shadow_does_not_hide_an_enforced_violation"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_shadow_violation_never_blocks"
+    },
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_authorized_prefix_required"
+    },
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_empty_prefix_list_denies_every_topic"
+    },
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_no_authorized_prefix_matches"
+    },
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_prefix_match_is_case_insensitive"
+    },
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_prefix_rule_disabled_by_configuration"
+    },
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_shadow_mode_is_reported_on_the_violation"
+    }
+   ]
+  },
+  {
+   "bundle": "naming",
+   "bypassable": true,
+   "description": "Topic names must not match naming.environmentRestrictions[env].forbiddenPatterns.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/naming/naming.rego",
+     "kind": "violation",
+     "line": 24
+    }
+   ],
+   "policyId": "ENV_NAME_RESTRICTION",
+   "reads": [
+    "configuration.naming.environmentRestrictions",
+    "environment",
+    "manifest.topics"
+   ],
+   "resourceType": "TOPIC",
+   "section": "naming",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_env_restriction_in_production"
+    },
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_env_restriction_not_in_development"
+    }
+   ]
+  },
+  {
+   "bundle": "naming",
+   "bypassable": true,
+   "description": "Topic names must match configuration naming.topicPattern.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/naming/naming.rego",
+     "kind": "violation",
+     "line": 6
+    }
+   ],
+   "policyId": "TOPIC_NAME_PATTERN",
+   "reads": [
+    "configuration.naming.topicPattern",
+    "manifest.topics"
+   ],
+   "resourceType": "TOPIC",
+   "section": "naming",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_shadow_does_not_hide_an_enforced_violation"
+    },
+    {
+     "file": "tests/naming_test.rego",
+     "test": "test_pattern_violation"
+    }
+   ]
+  },
+  {
+   "bundle": "quotas",
+   "bypassable": true,
+   "description": "One plan may create at most limits.maxPartitionsPerPlan partitions in total.",
+   "exemptable": true,
+   "fixtures": [
+    "plan-partitions-over-plan-limit"
+   ],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/quotas/quotas.rego",
+     "kind": "violation",
+     "line": 23
+    }
+   ],
+   "policyId": "MAX_PARTITIONS_PER_PLAN",
+   "reads": [
+    "actions[]",
+    "configuration.limits.maxPartitionsPerPlan (environmentOverrides apply)",
+    "plan.planId"
+   ],
+   "resourceType": "PLAN",
+   "section": "limits",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "ACTION_PLAN"
+   ],
+   "tests": [
+    {
+     "file": "tests/quotas_test.rego",
+     "test": "test_plan_partition_budget"
+    }
+   ]
+  },
+  {
+   "bundle": "quotas",
+   "bypassable": true,
+   "description": "Projected team usage (confirmed + reserved + this change) must stay within the team's quotas (team configuration).",
+   "exemptable": true,
+   "fixtures": [
+    "request-team-quota-exceeded"
+   ],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/quotas/quotas.rego",
+     "kind": "violation",
+     "line": 12
+    }
+   ],
+   "policyId": "TEAM_QUOTA_EXCEEDED",
+   "reads": [
+    "team.quotas",
+    "usage.current, usage.reserved, usage.delta"
+   ],
+   "resourceType": "QUOTA",
+   "section": "limits",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST",
+    "ACTION_PLAN"
+   ],
+   "tests": [
+    {
+     "file": "tests/quotas_test.rego",
+     "test": "test_quota_applies_at_plan_stage_too"
+    },
+    {
+     "file": "tests/quotas_test.rego",
+     "test": "test_reservations_of_other_plans_count"
+    },
+    {
+     "file": "tests/quotas_test.rego",
+     "test": "test_two_repositories_cannot_jointly_exceed_quota"
+    }
+   ]
+  },
+  {
+   "bundle": "resources",
+   "bypassable": true,
+   "description": "A topic may request at most limits.maxPartitionsPerTopic partitions (per-environment override).",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/resources/limits.rego",
+     "kind": "violation",
+     "line": 14
+    }
+   ],
+   "policyId": "MAX_PARTITIONS_PER_TOPIC",
+   "reads": [
+    "configuration.limits.maxPartitionsPerTopic (environmentOverrides apply)",
+    "manifest.topics"
+   ],
+   "resourceType": "TOPIC",
+   "section": "limits",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/limits_test.rego",
+     "test": "test_partitions_env_override"
+    }
+   ]
+  },
+  {
+   "bundle": "resources",
+   "bypassable": true,
+   "description": "A manifest may declare at most limits.maxTopicsPerManifest topics.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/resources/limits.rego",
+     "kind": "violation",
+     "line": 6
+    }
+   ],
+   "policyId": "MAX_TOPICS_PER_MANIFEST",
+   "reads": [
+    "configuration.limits.maxTopicsPerManifest (environmentOverrides apply)",
+    "manifest.repositoryId",
+    "manifest.topics"
+   ],
+   "resourceType": "MANIFEST",
+   "section": "limits",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/limits_test.rego",
+     "test": "test_too_many_topics"
+    }
+   ]
+  },
+  {
+   "bundle": "resources",
+   "bypassable": true,
+   "description": "In environments listed under rbac.environmentRoles only those roles are permitted.",
+   "exemptable": true,
+   "fixtures": [
+    "request-admin-role-hard-deny"
+   ],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/resources/rbac.rego",
+     "kind": "violation",
+     "line": 15
+    }
+   ],
+   "policyId": "RBAC_ENV_RESTRICTED",
+   "reads": [
+    "configuration.rbac.environmentRoles",
+    "configuration.rbac.forbiddenRoles",
+    "environment",
+    "manifest.rbac, manifest.identityPools[].rbac"
+   ],
+   "resourceType": "RBAC",
+   "section": "rbac",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/rbac_test.rego",
+     "test": "test_environment_restriction"
+    }
+   ]
+  },
+  {
+   "bundle": "resources",
+   "bypassable": true,
+   "description": "Only roles on rbac.allowedRoles may be requested.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/resources/rbac.rego",
+     "kind": "violation",
+     "line": 6
+    }
+   ],
+   "policyId": "RBAC_ROLE_ALLOWED",
+   "reads": [
+    "configuration.rbac.allowedRoles",
+    "configuration.rbac.forbiddenRoles",
+    "manifest.rbac, manifest.identityPools[].rbac"
+   ],
+   "resourceType": "RBAC",
+   "section": "rbac",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/rbac_test.rego",
+     "test": "test_unknown_role_denied_bypassable"
+    }
+   ]
+  },
+  {
+   "bundle": "resources",
+   "bypassable": true,
+   "description": "A team may only grant its team.allowedRoles (team configuration) or, when that list is empty, the roles listed under rbac.teamRoles.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/resources/rbac.rego",
+     "kind": "violation",
+     "line": 26
+    }
+   ],
+   "policyId": "RBAC_TEAM_ROLE_ALLOWED",
+   "reads": [
+    "configuration.rbac.forbiddenRoles",
+    "configuration.rbac.teamRoles",
+    "manifest.rbac, manifest.identityPools[].rbac",
+    "team.allowedRoles"
+   ],
+   "resourceType": "RBAC",
+   "section": "rbac",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/rbac_test.rego",
+     "test": "test_team_configuration_allowed_roles_override_configuration"
+    },
+    {
+     "file": "tests/rbac_test.rego",
+     "test": "test_team_role_restriction"
+    }
+   ]
+  },
+  {
+   "bundle": "resources",
+   "bypassable": true,
+   "description": "Retention must not exceed limits.maxRetentionMs; infinite retention (-1) is never allowed.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/resources/limits.rego",
+     "kind": "violation",
+     "line": 22
+    }
+   ],
+   "policyId": "TOPIC_RETENTION_LIMIT",
+   "reads": [
+    "configuration.limits.maxRetentionMs (environmentOverrides apply)",
+    "manifest.topics"
+   ],
+   "resourceType": "TOPIC",
+   "section": "limits",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/limits_test.rego",
+     "test": "test_retention_limit_from_config_and_infinite"
+    },
+    {
+     "file": "tests/limits_test.rego",
+     "test": "test_retention_limit_from_field"
+    }
+   ]
+  },
+  {
+   "bundle": "changes",
+   "bypassable": false,
+   "description": "Plans creating at least approvals.highImpactPartitionThreshold partitions require approval.",
+   "exemptable": false,
+   "fixtures": [
+    "plan-partitions-over-plan-limit"
+   ],
+   "kind": "APPROVAL",
+   "locations": [
+    {
+     "file": "bundles/changes/approval.rego",
+     "kind": "approval",
+     "line": 18
+    }
+   ],
+   "policyId": "HIGH_IMPACT_CHANGE_REQUIRES_APPROVAL",
+   "reads": [
+    "actions[]",
+    "configuration.approvals.highImpactPartitionThreshold",
+    "plan.planId"
+   ],
+   "resourceType": "PLAN",
+   "section": "approvals",
+   "severity": "REQUIRE_APPROVAL",
+   "shadowable": true,
+   "stages": [
+    "ACTION_PLAN"
+   ],
+   "tests": [
+    {
+     "file": "tests/approval_test.rego",
+     "test": "test_high_impact_plan_requires_approval"
+    }
+   ]
+  },
+  {
+   "bundle": "changes",
+   "bypassable": true,
+   "description": "Identity pool deletion is only allowed in destructive.identityPoolDeleteAllowedEnvironments.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/changes/destructive.rego",
+     "kind": "violation",
+     "line": 23
+    }
+   ],
+   "policyId": "IDENTITY_POOL_DELETE_RESTRICTED",
+   "reads": [
+    "actions[]",
+    "configuration.destructive.identityPoolDeleteAllowedEnvironments",
+    "environment"
+   ],
+   "resourceType": "IDENTITY_POOL",
+   "section": "destructive",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "ACTION_PLAN"
+   ],
+   "tests": [
+    {
+     "file": "tests/destructive_test.rego",
+     "test": "test_identity_pool_delete_restricted"
+    }
+   ]
+  },
+  {
+   "bundle": "changes",
+   "bypassable": false,
+   "description": "Deleting a topic in a sensitive environment requires approval when approvals.productionTopicDeletion is true.",
+   "exemptable": false,
+   "fixtures": [
+    "plan-prod-topic-deletion-requires-approval"
+   ],
+   "kind": "APPROVAL",
+   "locations": [
+    {
+     "file": "bundles/changes/approval.rego",
+     "kind": "approval",
+     "line": 8
+    }
+   ],
+   "policyId": "PROD_TOPIC_DELETE_REQUIRES_APPROVAL",
+   "reads": [
+    "actions[]",
+    "configuration.approvals.productionTopicDeletion",
+    "configuration.approvals.sensitiveEnvironments",
+    "environment"
+   ],
+   "resourceType": "TOPIC",
+   "section": "approvals",
+   "severity": "REQUIRE_APPROVAL",
+   "shadowable": true,
+   "stages": [
+    "ACTION_PLAN"
+   ],
+   "tests": [
+    {
+     "file": "tests/approval_test.rego",
+     "test": "test_prod_topic_delete_requires_approval"
+    },
+    {
+     "file": "tests/approval_test.rego",
+     "test": "test_switch_disables_prod_delete_approval"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_require_approval_when_no_violation"
+    },
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_shadow_approval_does_not_require_approval"
+    }
+   ]
+  },
+  {
+   "bundle": "changes",
+   "bypassable": true,
+   "description": "Revoking bindings is only allowed in destructive.rbacRevokeAllowedEnvironments.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/changes/destructive.rego",
+     "kind": "violation",
+     "line": 15
+    }
+   ],
+   "policyId": "RBAC_REVOKE_RESTRICTED",
+   "reads": [
+    "actions[]",
+    "configuration.destructive.rbacRevokeAllowedEnvironments",
+    "environment"
+   ],
+   "resourceType": "RBAC",
+   "section": "destructive",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "ACTION_PLAN"
+   ],
+   "tests": [
+    {
+     "file": "tests/decision_test.rego",
+     "test": "test_action_scoped_exception_at_plan_stage"
+    },
+    {
+     "file": "tests/destructive_test.rego",
+     "test": "test_rbac_revoke_restricted_in_production"
+    }
+   ]
+  },
+  {
+   "bundle": "changes",
+   "bypassable": false,
+   "description": "Granting rbac.sensitiveRoles in a sensitive environment requires approval when approvals.sensitiveRoleAssignment is true.",
+   "exemptable": false,
+   "fixtures": [],
+   "kind": "APPROVAL",
+   "locations": [
+    {
+     "file": "bundles/changes/approval.rego",
+     "kind": "approval",
+     "line": 30
+    }
+   ],
+   "policyId": "SENSITIVE_PERMISSION_REQUIRES_APPROVAL",
+   "reads": [
+    "configuration.approvals.sensitiveEnvironments",
+    "configuration.approvals.sensitiveRoleAssignment",
+    "configuration.rbac.sensitiveRoles",
+    "environment",
+    "manifest.rbac, manifest.identityPools[].rbac"
+   ],
+   "resourceType": "RBAC",
+   "section": "approvals",
+   "severity": "REQUIRE_APPROVAL",
+   "shadowable": true,
+   "stages": [
+    "REQUEST"
+   ],
+   "tests": [
+    {
+     "file": "tests/approval_test.rego",
+     "test": "test_sensitive_role_in_production_requires_approval"
+    }
+   ]
+  },
+  {
+   "bundle": "changes",
+   "bypassable": true,
+   "description": "Topic deletion is only allowed in destructive.topicDeleteAllowedEnvironments.",
+   "exemptable": true,
+   "fixtures": [],
+   "kind": "VIOLATION",
+   "locations": [
+    {
+     "file": "bundles/changes/destructive.rego",
+     "kind": "violation",
+     "line": 7
+    }
+   ],
+   "policyId": "TOPIC_DELETE_RESTRICTED",
+   "reads": [
+    "actions[]",
+    "configuration.destructive.topicDeleteAllowedEnvironments",
+    "environment"
+   ],
+   "resourceType": "TOPIC",
+   "section": "destructive",
+   "severity": "DENY",
+   "shadowable": true,
+   "stages": [
+    "ACTION_PLAN"
+   ],
+   "tests": []
+  }
+ ],
+ "releases": {
+  "dev": {
+   "bundles": {
+    "changes": {
+     "revision": "changes-d52b689"
+    },
+    "core": {
+     "revision": "core-d52b689"
+    },
+    "manifests": {
+     "revision": "manifests-d52b689"
+    },
+    "naming": {
+     "revision": "naming-d52b689"
+    },
+    "quotas": {
+     "revision": "quotas-d52b689"
+    },
+    "resources": {
+     "revision": "resources-d52b689"
+    }
+   },
+   "contractVersion": "2.0",
+   "releaseId": "rel-788a62c985e8"
+  },
+  "production": {
+   "bundles": {
+    "changes": {
+     "revision": "changes-d52b689"
+    },
+    "core": {
+     "revision": "core-d52b689"
+    },
+    "manifests": {
+     "revision": "manifests-d52b689"
+    },
+    "naming": {
+     "revision": "naming-d52b689"
+    },
+    "quotas": {
+     "revision": "quotas-d52b689"
+    },
+    "resources": {
+     "revision": "resources-d52b689"
+    }
+   },
+   "contractVersion": "2.0",
+   "releaseId": "rel-788a62c985e8"
+  },
+  "staging": {
+   "bundles": {
+    "changes": {
+     "revision": "changes-d52b689"
+    },
+    "core": {
+     "revision": "core-d52b689"
+    },
+    "manifests": {
+     "revision": "manifests-d52b689"
+    },
+    "naming": {
+     "revision": "naming-d52b689"
+    },
+    "quotas": {
+     "revision": "quotas-d52b689"
+    },
+    "resources": {
+     "revision": "resources-d52b689"
+    }
+   },
+   "contractVersion": "2.0",
+   "releaseId": "rel-788a62c985e8"
+  }
+ },
+ "summary": {
+  "approvals": 3,
+  "bundles": 6,
+  "bypassable": 16,
+  "emittedNotCatalogued": [],
+  "fixtures": 8,
+  "hardDenies": 1,
+  "policies": 20,
+  "tests": 79,
+  "withoutLocation": []
+ },
+ "testFiles": [
+  {
+   "bundle": "changes",
+   "file": "tests/approval_test.rego",
+   "package": "governance.changes.approval_test",
+   "tests": [
+    "test_prod_topic_delete_requires_approval",
+    "test_high_impact_plan_requires_approval",
+    "test_sensitive_role_in_production_requires_approval",
+    "test_switch_disables_prod_delete_approval"
+   ]
+  },
+  {
+   "bundle": "core",
+   "file": "tests/authz_test.rego",
+   "package": "governance.core.authz_test",
+   "tests": [
+    "test_admin_role_is_hard_deny",
+    "test_admin_role_hard_deny_at_plan_stage",
+    "test_pool_scoped_bindings_are_checked"
+   ]
+  },
+  {
+   "bundle": "core",
+   "file": "tests/catalog_test.rego",
+   "package": "governance.core.catalog_test",
+   "tests": [
+    "test_policy_ids_are_unique",
+    "test_every_entry_names_its_bundle",
+    "test_hard_deny_is_never_bypassable",
+    "test_approvals_are_never_bypassable",
+    "test_catalogue_has_the_expected_size",
+    "test_every_section_is_a_configuration_section",
+    "test_emitted_violations_are_catalogued",
+    "test_emitted_plan_violations_are_catalogued",
+    "test_emitted_plan_approvals_are_catalogued"
+   ]
+  },
+  {
+   "bundle": "core",
+   "file": "tests/composition_test.rego",
+   "package": "governance.core.composition_test",
+   "tests": [
+    "test_ready_with_all_bundles",
+    "test_missing_bundle_is_not_ready",
+    "test_missing_bundle_yields_error_decision",
+    "test_incompatible_contract_major_is_not_ready",
+    "test_minor_contract_difference_is_compatible",
+    "test_clean_manifest_allows_when_ready"
+   ]
+  },
+  {
+   "bundle": "core",
+   "file": "tests/decision_test.rego",
+   "package": "governance.core.decision_test",
+   "tests": [
+    "test_allow_clean_manifest",
+    "test_deny_on_violation",
+    "test_exception_exempts_bypassable_violation",
+    "test_exception_resource_scope_must_match",
+    "test_exception_principal_scope",
+    "test_exception_never_exempts_hard_deny",
+    "test_hard_deny_suppresses_approvals",
+    "test_require_approval_when_no_violation",
+    "test_deny_takes_precedence_over_approval",
+    "test_action_scoped_exception_at_plan_stage",
+    "test_output_is_deterministically_ordered",
+    "test_shadow_violation_never_blocks",
+    "test_shadow_does_not_hide_an_enforced_violation",
+    "test_shadow_hard_deny_does_not_block_nor_suppress_approvals",
+    "test_shadow_approval_does_not_require_approval",
+    "test_violation_without_enforcement_field_still_blocks"
+   ]
+  },
+  {
+   "bundle": "changes",
+   "file": "tests/destructive_test.rego",
+   "package": "governance.changes.destructive_test",
+   "tests": [
+    "test_topic_delete_allowed_everywhere_in_fixture",
+    "test_rbac_revoke_restricted_in_production",
+    "test_identity_pool_delete_restricted",
+    "test_creates_are_not_destructive",
+    "test_not_evaluated_at_request_stage"
+   ]
+  },
+  {
+   "bundle": "resources",
+   "file": "tests/limits_test.rego",
+   "package": "governance.resources.limits_test",
+   "tests": [
+    "test_within_limits",
+    "test_too_many_topics",
+    "test_partitions_env_override",
+    "test_retention_limit_from_field",
+    "test_retention_limit_from_config_and_infinite"
+   ]
+  },
+  {
+   "bundle": "manifests",
+   "file": "tests/manifests_test.rego",
+   "package": "governance.manifests_test",
+   "tests": [
+    "test_no_conflicts",
+    "test_topic_owned_by_other_repository",
+    "test_ownership_entries_for_undeclared_resources_are_ignored",
+    "test_identity_pool_owned_by_other_repository",
+    "test_create_action_for_owned_topic_at_plan_stage",
+    "test_repository_owned_by_other_team"
+   ]
+  },
+  {
+   "bundle": "naming",
+   "file": "tests/naming_test.rego",
+   "package": "governance.naming_test",
+   "tests": [
+    "test_valid_name_passes",
+    "test_pattern_violation",
+    "test_authorized_prefix_required",
+    "test_any_authorized_prefix_matches",
+    "test_no_authorized_prefix_matches",
+    "test_prefix_match_is_case_insensitive",
+    "test_empty_prefix_list_denies_every_topic",
+    "test_prefix_rule_disabled_by_configuration",
+    "test_env_restriction_in_production",
+    "test_env_restriction_not_in_development",
+    "test_naming_not_evaluated_at_plan_stage",
+    "test_shadow_mode_is_reported_on_the_violation"
+   ]
+  },
+  {
+   "bundle": "quotas",
+   "file": "tests/quotas_test.rego",
+   "package": "governance.quotas_test",
+   "tests": [
+    "test_no_quota_means_unlimited",
+    "test_projected_within_quota",
+    "test_two_repositories_cannot_jointly_exceed_quota",
+    "test_reservations_of_other_plans_count",
+    "test_negative_delta_frees_capacity",
+    "test_each_exceeded_key_is_reported",
+    "test_quota_applies_at_plan_stage_too",
+    "test_plan_partition_budget"
+   ]
+  },
+  {
+   "bundle": "resources",
+   "file": "tests/rbac_test.rego",
+   "package": "governance.resources.rbac_test",
+   "tests": [
+    "test_allowed_role_passes",
+    "test_unknown_role_denied_bypassable",
+    "test_environment_restriction",
+    "test_team_role_restriction",
+    "test_team_configuration_allowed_roles_override_configuration"
+   ]
+  }
+ ]
+}</script>
+<script>
+(() => {
+  'use strict';
+  const data = JSON.parse(document.getElementById('inventory').textContent);
+  const $ = (id) => document.getElementById(id);
+  const h = (tag, attrs = {}, ...children) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v); }
+    for (const c of children.flat()) if (c !== null && c !== undefined) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+    return e;
+  };
+  const sevClass = { HARD_DENY: 'deny', DENY: 'error', REQUIRE_APPROVAL: 'approval' };
+  const state = { q: '', bundle: '', kind: '', severity: '', stage: '', section: '', bypass: '', open: new Set() };
+
+  // ---------- summary and warnings
+  const s = data.summary;
+  $('summary').append(
+    h('span', { class: 'pill info' }, `${s.policies} policies`),
+    h('span', { class: 'pill ok' }, `${s.bypassable} bypassable`),
+    h('span', { class: 'pill deny' }, `${s.hardDenies} hard ${s.hardDenies === 1 ? 'deny' : 'denies'}`),
+    h('span', { class: 'pill approval' }, `${s.approvals} approval ${s.approvals === 1 ? 'requirement' : 'requirements'}`),
+    h('span', { class: 'pill bundle' }, `${s.bundles} bundles`),
+    h('span', { class: 'pill' }, `${s.tests} Rego tests`),
+    h('span', { class: 'pill' }, `${s.fixtures} behaviour fixtures`),
+  );
+  if (s.withoutLocation.length || s.emittedNotCatalogued.length) {
+    $('warnings').append(h('div', { class: 'panel warn' },
+      s.withoutLocation.length ? `Catalogued without a rule in the sources: ${s.withoutLocation.join(', ')}. ` : '',
+      s.emittedNotCatalogued.length ? `Rules without a catalogue entry: ${s.emittedNotCatalogued.join(', ')}.` : ''));
+  }
+
+  // ---------- bundle cards
+  const envs = Object.keys(data.releases).sort();
+  for (const b of data.bundles) {
+    const card = h('div', { class: 'panel card' });
+    card.append(h('h3', {}, b.name, h('span', { class: 'mono' }, `root ${b.roots.join(', ')}`), h('span', { class: 'pill small bundle' }, `contract ${b.contractVersion || '?'}`)));
+    card.append(h('div', { class: 'meta' }, h('b', {}, String(b.policies.length)), ` ${b.policies.length === 1 ? 'policy' : 'policies'} · `, h('b', {}, String(b.testCount)), ` tests in ${b.testFiles.length ? b.testFiles.map((f) => f.replace('tests/', '')).join(', ') : 'no dedicated file'}`));
+    card.append(h('div', { class: 'meta' }, 'Packages: ', h('code', {}, b.packages.join(' · '))));
+    card.append(h('div', { class: 'meta' }, 'Files: ', h('code', {}, b.files.join(' · '))));
+    if (b.owners.length) card.append(h('div', { class: 'meta' }, 'Owners (CODEOWNERS): ', h('code', {}, b.owners.join(' '))));
+    const chips = h('div', { class: 'chips' });
+    if (b.policies.length) for (const pid of b.policies) chips.append(h('button', { class: 'chip', type: 'button', title: 'Show this rule', onclick: () => { resetFilters(); state.q = pid; $('q').value = pid; state.open.add(pid); render(); $('rules').scrollIntoView({ behavior: 'smooth' }); } }, pid));
+    else chips.append(h('span', { class: 'muted' }, 'composition, readiness, exception matching and the merged catalogue; no domain rule of its own apart from the global prohibitions'));
+    card.append(chips);
+    if (envs.length) {
+      const rev = h('div', { class: 'rev' });
+      for (const env of envs) {
+        const r = (data.releases[env].bundles || {})[b.name] || {};
+        rev.append(h('span', {}, env), h('code', {}, r.revision ? `${r.revision}${r.keyId ? ` · key ${r.keyId}` : ''}` : 'not pinned'));
+      }
+      card.append(rev);
+    }
+    $('bundles').append(card);
+  }
+
+  // ---------- filters
+  const uniq = (f) => [...new Set(data.policies.flatMap(f))].sort();
+  const fill = (id, values) => { for (const v of values) $(id).append(h('option', { value: v }, v)); };
+  fill('f-bundle', data.bundles.map((b) => b.name)); fill('f-kind', uniq((p) => [p.kind])); fill('f-severity', uniq((p) => [p.severity]));
+  fill('f-stage', uniq((p) => p.stages)); fill('f-section', uniq((p) => [p.section]));
+  const bind = (id, key) => $(id).addEventListener('input', (e) => { state[key] = e.target.value; render(); });
+  bind('q', 'q'); bind('f-bundle', 'bundle'); bind('f-kind', 'kind'); bind('f-severity', 'severity'); bind('f-stage', 'stage'); bind('f-section', 'section'); bind('f-bypass', 'bypass');
+  function resetFilters() {
+    Object.assign(state, { q: '', bundle: '', kind: '', severity: '', stage: '', section: '', bypass: '' });
+    for (const id of ['q', 'f-bundle', 'f-kind', 'f-severity', 'f-stage', 'f-section', 'f-bypass']) $(id).value = '';
+  }
+  $('reset').addEventListener('click', () => { resetFilters(); state.open.clear(); render(); });
+  $('expand').addEventListener('click', () => {
+    const shown = visible();
+    const allOpen = shown.every((p) => state.open.has(p.policyId));
+    if (allOpen) for (const p of shown) state.open.delete(p.policyId); else for (const p of shown) state.open.add(p.policyId);
+    render();
+  });
+  function visible() {
+    const q = state.q.trim().toLowerCase();
+    return data.policies.filter((p) =>
+      (!state.bundle || p.bundle === state.bundle) && (!state.kind || p.kind === state.kind) && (!state.severity || p.severity === state.severity) &&
+      (!state.stage || p.stages.includes(state.stage)) && (!state.section || p.section === state.section) &&
+      (!state.bypass || String(p.bypassable) === state.bypass) &&
+      (!q || [p.policyId, p.description, p.resourceType, p.bundle, ...p.reads, ...p.fixtures].join(' ').toLowerCase().includes(q)));
+  }
+
+  // ---------- table
+  function detail(p) {
+    const list = (items, fmt) => items.length ? h('ul', {}, items.map((x) => h('li', {}, fmt(x)))) : h('span', { class: 'muted' }, 'none');
+    const fx = data.fixtures.filter((f) => p.fixtures.includes(f.name));
+    return h('div', { class: 'detail' },
+      h('p', {}, p.description),
+      h('div', { class: 'detail-grid' },
+        h('div', {}, h('h4', {}, 'Reads from the input'), list(p.reads, (r) => h('code', {}, r))),
+        h('div', {}, h('h4', {}, 'Rego'), list(p.locations, (l) => h('code', {}, `${l.file}:${l.line}`))),
+        h('div', {}, h('h4', {}, 'Tests'), list(p.tests, (t) => h('span', {}, h('code', {}, t.test), h('span', { class: 'muted' }, ` · ${t.file.replace('tests/', '')}`)))),
+        h('div', {}, h('h4', {}, 'Fixtures'), list(fx, (f) => h('span', {}, h('code', {}, f.name), h('span', { class: 'muted' }, ` · ${f.stage || ''} → ${f.decision}`)))),
+        h('div', {}, h('h4', {}, 'Operational switches'),
+          h('ul', {},
+            h('li', {}, p.exemptable ? 'A scoped exception (policy id, team, environment, resource glob, action types) exempts it.' : (p.kind === 'APPROVAL' ? 'Approval requirements are never bypassable by an exception.' : 'HARD_DENY: no exception and no approval applies.')),
+            h('li', {}, 'Shadow mode: ', h('code', {}, `configuration.enforcement["${p.policyId}"] = "shadow"`), ' records findings without blocking.'))),
+      ));
+  }
+  function render() {
+    const shown = visible();
+    const tbody = $('rows');
+    tbody.replaceChildren();
+    for (const p of shown) {
+      const open = state.open.has(p.policyId);
+      const row = h('tr', { class: 'row', tabindex: 0, role: 'button', 'aria-expanded': String(open), 'data-id': p.policyId,
+        onclick: () => toggle(p.policyId), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(p.policyId); } } },
+        h('td', {}, h('code', {}, p.policyId)),
+        h('td', {}, h('span', { class: 'pill small bundle' }, p.bundle)),
+        h('td', {}, p.kind === 'APPROVAL' ? 'approval' : 'violation'),
+        h('td', {}, h('span', { class: `pill small ${sevClass[p.severity] || ''}` }, p.severity)),
+        h('td', {}, p.bypassable ? h('span', { class: 'pill small ok' }, 'yes') : h('span', { class: 'pill small' }, 'no')),
+        h('td', { class: 'opt' }, p.stages.join(' · ')),
+        h('td', { class: 'opt' }, h('code', {}, p.resourceType)),
+        h('td', { class: 'opt' }, p.section),
+        h('td', { class: 'opt muted' }, `${p.tests.length} · ${p.fixtures.length}`));
+      tbody.append(row);
+      const d = h('tr', { class: 'detail' }, h('td', { colspan: 9 }, detail(p)));
+      if (!open) d.hidden = true;
+      tbody.append(d);
+    }
+    $('count').textContent = `${shown.length} of ${data.policies.length} rules`;
+    $('expand').textContent = shown.length && shown.every((p) => state.open.has(p.policyId)) ? 'Collapse all' : 'Expand all';
+  }
+  function toggle(id) { if (state.open.has(id)) state.open.delete(id); else state.open.add(id); render(); }
+
+  // ---------- footer
+  const releaseLine = envs.length ? envs.map((e) => `${e}: ${data.releases[e].releaseId || '?'}`).join(' · ') : 'no release files found next to the repository';
+  $('footer').append(
+    h('p', {}, 'Pinned releases per environment (deploy/helm/governance/releases): ', h('code', {}, releaseLine), '. The catalogue is the source of truth for ids, severities and bypassability (policies/tests/catalog_test.rego fails when a rule emits an id that is not catalogued). Policy configuration values (patterns, limits, allowed roles) live in Governance (policy_configuration) and are not part of this page.'),
+    h('p', {}, 'Regenerate with ', h('code', {}, 'policies/scripts/inventory.sh'), '; check without writing with ', h('code', {}, '--check'), '. Authoring rules: policies/docs/bundle-authoring.md.'));
+
+  // ---------- theme
+  const themeBtn = $('theme'); const THEMES = ['auto', 'dark', 'light']; let themeIdx = 0;
+  themeBtn.addEventListener('click', () => {
+    themeIdx = (themeIdx + 1) % THEMES.length; const t = THEMES[themeIdx];
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+    themeBtn.textContent = 'Theme: ' + t;
+  });
+
+  // ---------- deep link: #q=<text>&b=<bundle>
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  if (params.get('q')) { state.q = params.get('q'); $('q').value = state.q; }
+  if (params.get('b')) { state.bundle = params.get('b'); $('f-bundle').value = state.bundle; }
+  render();
+})();
+</script>
+</body>
+</html>

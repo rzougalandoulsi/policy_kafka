@@ -126,15 +126,17 @@ Every policy id a bundle can emit has exactly one entry in its `catalog`:
 
 ## 7. Rolling a new rule out
 
-1. Open the pull request; Workflow A runs `scripts/validate.sh` (fmt, strict check, tests, coverage, roots, lib copies,
-   builtins, contract sync, fixtures, schemas, Regal, gitleaks, dry-run build per bundle). Run the same script locally
-   first; `tests/integration/validate-negative.sh` shows what each check rejects.
-2. Merge; Workflow B publishes a candidate with the changed bundle(s) at new revisions and the others unchanged.
-3. Soak before enforcing: in Governance, activate a policy configuration version with
+1. Regenerate the rules and bundle inventory page (`scripts/inventory.sh`, output `docs/policy-inventory.html` in
+   policy_kafka) and commit it with the change; Workflow A fails when the page is stale.
+2. Open the pull request; Workflow A runs `scripts/validate.sh` (fmt, strict check, tests, coverage, roots, lib copies,
+   builtins, contract sync, fixtures, schemas, inventory check, Regal, gitleaks, dry-run build per bundle). Run the same
+   script locally first; `tests/integration/validate-negative.sh` shows what each check rejects.
+3. Merge; Workflow B publishes a candidate with the changed bundle(s) at new revisions and the others unchanged.
+4. Soak before enforcing: in Governance, activate a policy configuration version with
    `enforcement: {"POLICY_ID": "shadow"}` in dev and staging; the rule is evaluated and recorded
    (`GET /api/v1/admin/shadow-findings`, metric `governance_shadow_findings_total`) but never blocks. Remove the entry
    to enforce. Shadow mode is a Governance-side switch; the bundle does not change.
-4. Promote with Workflow C, verify with Workflow D (`docs/operations.md`).
+5. Promote with Workflow C, verify with Workflow D (`docs/operations.md`).
 
 ## 8. Local loop
 
