@@ -68,3 +68,4 @@ page); auditors can use `deploy/scripts/token.sh` with the dev token form. See `
 - `docs/policy-inventory.html` — generated rules and bundle inventory: every policy id with severity, bypassability, stages, inputs read, Rego location, tests and fixtures, plus the six bundles and the revision each environment pins (`policies/scripts/inventory.sh`; open from a checkout)
 - `docs/admin-ui.md` — the admin console: pages, roles, sign-in and proxy setup, configuration, troubleshooting
 - `docs/adr/` — architecture decision records
+- `docs/open-phases-6-7.md` — the two open phases of the OPA programme (resource-type expansion, Orchestrator rule migration) with the inputs needed from the Orchestrator and Processor owners
