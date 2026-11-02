@@ -37,6 +37,13 @@
 | Bundle `FAILED` | OPA could not load it; previous version restored automatically | fix the bundle, upload a new revision |
 
 ## Policy rollout
+Two modes (ADR 0008). **Deployed environments run in `release` mode**: the policy set is pinned by
+`deploy/helm/governance/releases/<env>.json`, OPA pulls the signed revisions from Artifactory, upload/activate/rollback
+answer 409 `POLICY_SOURCE_IS_GIT`, and the console shows the release read-only. Promote with Workflow C (release PR),
+roll back with Workflow E; `helm upgrade` rolls the pods and each pod is ready only when its sidecar runs the whole set
+(`GET /api/v1/admin/policy-releases/current` shows `mode`, `source`, expected versus loaded per bundle).
+`deploy/scripts/post-deploy-check.sh` runs the per-pod check after a deploy. A pod that never becomes ready: `oc logs
+<pod> -c opa` (download, signature or activation error), then the readiness details. **Local mode** (Compose, IT):
 `policies/build.sh <revision>` builds six bundles and `dist/release.json` → upload each (`POST /api/v1/admin/policy-bundles`, bundle + shared test report) → `POST /api/v1/admin/policy-releases {versionIds}` activates the set atomically (`deploy/scripts/upload-release.sh` does all of it) → watch `GET /api/v1/admin/policy-releases/current` until `match` and `ready` → `POST /api/v1/admin/policy-bundles/rollback?bundle=<name>` restores one bundle if needed. Readiness (`/actuator/health/readiness`, component `policyRelease`) is DOWN while OPA runs anything but the active release, so a replica with a stale bundle receives no traffic. Configuration changes: create a draft, activate, rollback.
 The same steps are available in the admin console (`/policy-bundles` upload + activate with a live adoption watcher, `/policy-configurations` with a diff before activation). See `docs/admin-ui.md`.
 

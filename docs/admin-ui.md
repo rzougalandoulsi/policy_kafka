@@ -67,6 +67,8 @@ image serves every environment.
 | `OIDC_ENDPOINT_BASE` | `/oidc/default` | empty = use discovery |
 | `ROLES_CLAIM`, `ADMIN_ROLE`, `AUDITOR_ROLE` | `roles`, `governance-admin`, `governance-auditor` | mirror `governance.security.*` |
 | `DEV_TOKEN_LOGIN` | `true` locally, `false` in the image | paste-a-token login |
+| `LOCAL_POLICY_ADMIN` | `true` locally, `false` in the Helm chart | bundle upload, activation and rollback controls; `false` when Governance runs in release mode (the page shows the pinned release read-only) |
+| `ENV_JS_PATH` | `/usr/share/nginx/html/env.js` | where the entrypoint writes `env.js`; the Helm chart points it at an `emptyDir` so the root filesystem stays read-only |
 
 ## Development
 ```bash

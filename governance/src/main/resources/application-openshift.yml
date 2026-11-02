@@ -1,0 +1,20 @@
+# Deployed environments (OpenShift pod with the OPA sidecar). Activated by SPRING_PROFILES_ACTIVE=openshift from the
+# Helm chart. Policies come from the mounted release manifest and the sidecar pulls the pinned revisions from
+# Artifactory; PolicyReleaseSourceConfig refuses to start in local mode under this profile.
+governance:
+  opa:
+    mode: release
+    release-file: ${GOVERNANCE_POLICY_RELEASE_FILE:/etc/governance/release.json}
+    url: ${OPA_URL:http://127.0.0.1:8181}
+
+server:
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 25s
+
+logging:
+  structured:
+    format:
+      console: ${LOG_FORMAT:ecs}

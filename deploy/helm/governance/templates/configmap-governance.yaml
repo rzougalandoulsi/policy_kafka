@@ -1,0 +1,25 @@
+# Spring configuration overrides loaded through SPRING_CONFIG_ADDITIONAL_LOCATION. Mode and release file come from the
+# openshift profile; everything environment-specific that is not a secret goes here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "governance.fullname" . }}-config
+  labels:
+    {{- include "governance.labels" . | nindent 4 }}
+data:
+  application.yml: |
+    governance:
+      security:
+        issuer-uri: {{ .Values.governance.oidc.issuerUri | quote }}
+        teams-claim: {{ .Values.governance.oidc.teamsClaim | quote }}
+        environments-claim: {{ .Values.governance.oidc.environmentsClaim | quote }}
+        roles-claim: {{ .Values.governance.oidc.rolesClaim | quote }}
+    spring:
+      security:
+        oauth2:
+          resourceserver:
+            jwt:
+              issuer-uri: {{ .Values.governance.oidc.issuerUri | quote }}
+{{- if .Values.governance.config }}
+{{ toYaml .Values.governance.config | indent 4 }}
+{{- end }}

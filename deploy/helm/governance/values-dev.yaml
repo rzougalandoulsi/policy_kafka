@@ -1,0 +1,26 @@
+# dev: first environment of every promotion (Workflow C auto-merges the release PR here). [A] values are placeholders.
+environment: dev
+replicaCount: 2
+image:
+  repository: registry.example.com/governance/governance          # [A]
+opa:
+  image:
+    digest: ""                                                     # [A] pin: sha256:<digest of openpolicyagent/opa:1.22.0-static>
+artifactory:
+  url: https://artifactory.example.com/artifactory                # [A]
+  repositoryKey: opa-bundles                                       # [A]
+signing:
+  publicKey: ""                                                    # [A] RS256 public key of the dev/staging/production signing key
+governance:
+  oidc:
+    issuerUri: https://idp-dev.example.com/realms/platform         # [A]
+  config:
+    governance:
+      usage:
+        require-fresh-snapshot: true
+route:
+  host: governance-dev.apps.example.com                            # [A]
+networkPolicy:
+  egress: []                                                       # [A] database, Kafka, Schema Registry, Artifactory, IdP
+externalSecrets:
+  enabled: false                                                   # [A] true when External Secrets Operator is available

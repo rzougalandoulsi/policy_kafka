@@ -1,0 +1,38 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "adminui.fullname" . }}
+  labels:
+    {{- include "adminui.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "adminui.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 12 }}
+      ports:
+        - port: http
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.dnsNamespaceSelector | nindent 12 }}
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+        - { port: 5353, protocol: UDP }
+        - { port: 5353, protocol: TCP }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: governance
+      ports:
+        - { port: 8080, protocol: TCP }
+    {{- with .Values.networkPolicy.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

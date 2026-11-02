@@ -1,0 +1,14 @@
+# The promoted policy release, mounted for Governance (GOVERNANCE_POLICY_RELEASE_FILE). Changing it changes the
+# checksum/release pod annotation and rolls the Deployment; each pod becomes ready only when its sidecar runs
+# exactly these six revisions.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "governance.fullname" . }}-policy-release
+  labels:
+    {{- include "governance.labels" . | nindent 4 }}
+  annotations:
+    governance.itland.com/release-id: {{ include "governance.releaseId" . | quote }}
+data:
+  release.json: |
+{{ include "governance.release" . | indent 4 }}

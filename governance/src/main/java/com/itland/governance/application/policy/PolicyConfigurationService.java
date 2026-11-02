@@ -1,12 +1,10 @@
 package com.itland.governance.application.policy;
 
 import com.itland.governance.application.audit.AuditService;
-import com.itland.governance.domain.policy.PolicyBundleVersion;
 import com.itland.governance.domain.policy.PolicyConfiguration;
 import com.itland.governance.domain.policy.PolicyRelease;
 import com.itland.governance.domain.policy.PolicySnapshot;
 import com.itland.governance.domain.policy.VersionStatus;
-import com.itland.governance.infrastructure.persistence.PolicyBundleRepository;
 import com.itland.governance.infrastructure.persistence.PolicyConfigurationRepository;
 import org.springframework.stereotype.Service;
 
@@ -30,24 +28,22 @@ public class PolicyConfigurationService {
   private static final java.util.regex.Pattern POLICY_ID = java.util.regex.Pattern.compile("^[A-Z][A-Z0-9_]{2,63}$");
 
   private final PolicyConfigurationRepository configurations;
-  private final PolicyBundleRepository bundles;
+  private final PolicyReleaseSource releases;
   private final AuditService audit;
   private final Clock clock;
 
-  public PolicyConfigurationService(PolicyConfigurationRepository configurations, PolicyBundleRepository bundles, AuditService audit, Clock clock) {
+  public PolicyConfigurationService(PolicyConfigurationRepository configurations, PolicyReleaseSource releases, AuditService audit, Clock clock) {
     this.configurations = configurations;
-    this.bundles = bundles;
+    this.releases = releases;
     this.audit = audit;
     this.clock = clock;
   }
 
-  /** The consistent (configuration version, policy release) pair for one decision. Release is null when no bundle is active. */
+  /** The consistent (configuration version, policy release) pair for one decision. Release is null when none is defined. */
   public PolicySnapshot activeSnapshot() {
     PolicyConfiguration config = configurations.findActive()
         .orElseThrow(() -> new IllegalStateException("No ACTIVE policy configuration"));
-    Map<String, String> revisions = new java.util.TreeMap<>();
-    for (PolicyBundleVersion v : bundles.findActiveAll()) revisions.put(v.bundleName(), v.revision());
-    return new PolicySnapshot(config.version(), config.content(), revisions.isEmpty() ? null : PolicyRelease.of(revisions));
+    return new PolicySnapshot(config.version(), config.content(), releases.expected().orElse(null));
   }
 
   public List<PolicyConfiguration> list() {

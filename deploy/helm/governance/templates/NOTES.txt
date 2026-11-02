@@ -1,0 +1,9 @@
+governance {{ .Chart.Version }} deployed to {{ .Release.Namespace }} ({{ .Values.environment }}).
+Policy release: {{ include "governance.releaseId" . }} from {{ include "governance.releaseFile" . }}
+Image: {{ include "governance.image" . }}   OPA: {{ include "governance.opaImage" . }}
+
+Each pod becomes ready only when its OPA sidecar runs exactly the six pinned revisions and
+data.governance.core.ready is true (readiness component policyRelease). Watch:
+  oc -n {{ .Release.Namespace }} rollout status deployment/{{ include "governance.fullname" . }}
+  oc -n {{ .Release.Namespace }} exec deploy/{{ include "governance.fullname" . }} -c governance -- curl -s localhost:{{ .Values.governance.port }}/actuator/health/readiness
+Promotion = change releases/{{ .Values.environment }}.json (Workflow C), rollback = Workflow E. No endpoint changes the set.

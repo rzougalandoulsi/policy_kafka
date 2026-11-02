@@ -13,8 +13,13 @@ FROM nginx:1.27-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY nginx/40-env-js.sh /docker-entrypoint.d/40-env-js.sh
+# Arbitrary UID (OpenShift restricted SCC): the directories nginx and the entrypoint write to are group 0 writable;
+# the Helm chart mounts emptyDirs there and keeps the root filesystem read-only.
 RUN chmod +x /docker-entrypoint.d/40-env-js.sh \
- && rm -f /usr/share/nginx/html/env.js
+ && rm -f /usr/share/nginx/html/env.js \
+ && mkdir -p /var/run/admin-ui \
+ && chgrp -R 0 /var/cache/nginx /var/run/admin-ui /etc/nginx/conf.d /run /usr/share/nginx/html \
+ && chmod -R g+rwX /var/cache/nginx /var/run/admin-ui /etc/nginx/conf.d /run /usr/share/nginx/html
 # Defaults match deploy/docker-compose.yml; override per environment.
 ENV GOVERNANCE_URL=http://governance:8080 \
     OIDC_UPSTREAM_URL=http://mock-oidc:8080 \
@@ -27,6 +32,8 @@ ENV GOVERNANCE_URL=http://governance:8080 \
     ADMIN_ROLE=governance-admin \
     AUDITOR_ROLE=governance-auditor \
     DEV_TOKEN_LOGIN=false \
+    LOCAL_POLICY_ADMIN=true \
+    ENV_JS_PATH=/usr/share/nginx/html/env.js \
     NGINX_PORT=80 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=true
 EXPOSE 80

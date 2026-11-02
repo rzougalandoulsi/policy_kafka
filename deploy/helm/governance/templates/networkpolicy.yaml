@@ -1,0 +1,46 @@
+{{- if .Values.networkPolicy.enabled }}
+# Ingress: 8080 from the router and the admin console, 8080 (actuator) and 8282 (OPA diagnostics) from monitoring.
+# Port 8181 (OPA Data API) is in no rule and also binds loopback only: unreachable from any other pod.
+# Egress: DNS plus the environment's explicit targets (database, Kafka, Schema Registry, Artifactory, IdP).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "governance.fullname" . }}
+  labels:
+    {{- include "governance.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "governance.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 12 }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: governance-admin-ui
+      ports:
+        - port: http
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.monitoringNamespaceSelector | nindent 12 }}
+      ports:
+        - port: http
+          protocol: TCP
+        - port: diagnostics
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.dnsNamespaceSelector | nindent 12 }}
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+        - { port: 5353, protocol: UDP }
+        - { port: 5353, protocol: TCP }
+    {{- with .Values.networkPolicy.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

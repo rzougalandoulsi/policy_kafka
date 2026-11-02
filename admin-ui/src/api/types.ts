@@ -159,6 +159,10 @@ export interface RevisionDiagnostics {
   /** data.governance.core.ready: every bundle loaded with a compatible contract version */
   ready: boolean;
   bundles: Record<string, BundleDiagnostics>;
+  /** local (ACTIVE versions in the database) or release (mounted release manifest, OPA pulls from Artifactory) */
+  mode?: 'local' | 'release' | string;
+  /** where the expected release comes from, e.g. "database (ACTIVE bundle versions)" or "file:/etc/governance/release.json" */
+  source?: string;
 }
 
 /** PolicyReleaseController.ActivateReleaseBody */

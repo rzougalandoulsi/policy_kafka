@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "adminui.fullname" . }}
+  labels:
+    {{- include "adminui.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "adminui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "adminui.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "adminui.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: admin-ui
+          image: {{ include "adminui.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+              protocol: TCP
+          env:
+            - { name: NGINX_PORT, value: {{ .Values.port | quote }} }
+            - { name: GOVERNANCE_URL, value: {{ .Values.governanceServiceUrl | quote }} }
+            - { name: OIDC_UPSTREAM_URL, value: {{ .Values.oidc.upstreamUrl | quote }} }
+            - { name: OIDC_UPSTREAM_HOST, value: {{ .Values.oidc.upstreamHost | quote }} }
+            - { name: OIDC_ISSUER, value: {{ .Values.oidc.issuer | quote }} }
+            - { name: OIDC_CLIENT_ID, value: {{ .Values.oidc.clientId | quote }} }
+            - { name: OIDC_SCOPE, value: {{ .Values.oidc.scope | quote }} }
+            - { name: OIDC_ENDPOINT_BASE, value: {{ .Values.oidc.endpointBase | quote }} }
+            - { name: ROLES_CLAIM, value: {{ .Values.rolesClaim | quote }} }
+            - { name: ADMIN_ROLE, value: {{ .Values.adminRole | quote }} }
+            - { name: AUDITOR_ROLE, value: {{ .Values.auditorRole | quote }} }
+            # Deployed environments: no paste-a-token login, no local policy administration (Governance is in release mode).
+            - { name: DEV_TOKEN_LOGIN, value: "false" }
+            - { name: LOCAL_POLICY_ADMIN, value: "false" }
+            - { name: ENV_JS_PATH, value: /var/run/admin-ui/env.js }
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: nginx-cache, mountPath: /var/cache/nginx }
+            - { name: nginx-run, mountPath: /run }
+            - { name: nginx-conf, mountPath: /etc/nginx/conf.d }
+            - { name: env-js, mountPath: /var/run/admin-ui }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: nginx-cache, emptyDir: {} }
+        - { name: nginx-run, emptyDir: {} }
+        - { name: nginx-conf, emptyDir: {} }
+        - { name: env-js, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }

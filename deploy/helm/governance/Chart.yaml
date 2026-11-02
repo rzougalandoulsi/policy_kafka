@@ -1,0 +1,7 @@
+apiVersion: v2
+name: governance
+description: Kafka governance service with its OPA policy sidecar (OpenShift). The policy release is pinned by releases/<environment>.json and the sidecar pulls the signed revisions from Artifactory.
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords: [governance, opa, kafka, openshift]

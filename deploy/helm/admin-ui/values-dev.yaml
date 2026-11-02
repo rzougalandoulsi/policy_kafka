@@ -1,0 +1,14 @@
+# dev admin console. [A] values are placeholders.
+environment: dev
+image:
+  repository: registry.example.com/governance/admin-ui             # [A]
+governanceServiceUrl: http://governance:8080
+oidc:
+  issuer: https://idp-dev.example.com/realms/platform   # [A]
+  upstreamUrl: https://idp-dev.example.com              # [A]
+  upstreamHost: idp-dev.example.com                     # [A]
+  clientId: governance-admin-console                                # [A]
+route:
+  host: governance-console-dev.apps.example.com          # [A]
+networkPolicy:
+  egress: []                                                        # [A] identity provider

@@ -80,6 +80,11 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("TEAM_CONFIGURATION_EXTERNAL", e.getMessage()));
   }
 
+  @ExceptionHandler(com.itland.governance.application.policy.PolicySourceIsGitException.class)
+  public ResponseEntity<ApiError> policySourceIsGit(com.itland.governance.application.policy.PolicySourceIsGitException e) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("POLICY_SOURCE_IS_GIT", e.getMessage()));
+  }
+
   @ExceptionHandler(IllegalStateException.class)
   public ResponseEntity<ApiError> conflict(IllegalStateException e) {
     log.warn("State conflict: {}", e.getMessage());

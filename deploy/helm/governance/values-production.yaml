@@ -1,0 +1,34 @@
+# production: protected GitHub environment, three replicas, autoscaling, production IdP. [A] values are placeholders.
+environment: production
+replicaCount: 3
+image:
+  repository: registry.example.com/governance/governance          # [A]
+opa:
+  image:
+    digest: ""                                                     # [A]
+  resources:
+    requests: { cpu: 200m, memory: 192Mi }
+    limits: { cpu: "1", memory: 768Mi }
+artifactory:
+  url: https://artifactory.example.com/artifactory                # [A]
+  repositoryKey: opa-bundles                                       # [A]
+signing:
+  publicKey: ""                                                    # [A]
+governance:
+  oidc:
+    issuerUri: https://idp.example.com/realms/platform             # [A]
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits: { cpu: "2", memory: 2Gi }
+route:
+  host: governance.apps.example.com                                # [A]
+networkPolicy:
+  egress: []                                                       # [A]
+podDisruptionBudget:
+  minAvailable: 2
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 6
+externalSecrets:
+  enabled: false                                                   # [A]

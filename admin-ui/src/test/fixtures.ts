@@ -197,6 +197,8 @@ export const diagnostics: RevisionDiagnostics = {
   releaseId: RELEASE_ID,
   match: true,
   ready: true,
+  mode: 'local',
+  source: 'database (ACTIVE bundle versions)',
   bundles: Object.fromEntries(
     ['core', 'manifests', 'naming', 'quotas', 'resources', 'changes'].map((n) => [
       n,

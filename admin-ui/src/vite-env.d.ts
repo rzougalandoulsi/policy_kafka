@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_ADMIN_ROLE?: string;
   readonly VITE_AUDITOR_ROLE?: string;
   readonly VITE_DEV_TOKEN_LOGIN?: string;
+  readonly VITE_LOCAL_POLICY_ADMIN?: string;
 }
 
 interface Window {

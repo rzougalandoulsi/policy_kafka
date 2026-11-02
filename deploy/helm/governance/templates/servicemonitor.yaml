@@ -1,0 +1,24 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "governance.fullname" . }}
+  labels:
+    {{- include "governance.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "governance.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames: [{{ .Release.Namespace | quote }}]
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: {{ .Values.serviceMonitor.interval }}
+    - targetPort: 8282
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}

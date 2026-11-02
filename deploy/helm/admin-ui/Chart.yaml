@@ -1,0 +1,6 @@
+apiVersion: v2
+name: governance-admin-ui
+description: Admin console of the Kafka governance platform (React SPA behind nginx; same-origin /api and /oidc proxies). Read-only for policy bundles in deployed environments.
+type: application
+version: 0.1.0
+appVersion: "1.0"

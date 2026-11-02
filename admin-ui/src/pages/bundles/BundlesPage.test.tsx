@@ -2,8 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/server';
-import { renderApp } from '@/test/render';
-import { ADMIN_TOKEN, AUDITOR_TOKEN, RELEASE_ID, bundles } from '@/test/fixtures';
+import { renderApp, testConfig } from '@/test/render';
+import { ADMIN_TOKEN, AUDITOR_TOKEN, RELEASE_ID, bundles, diagnostics } from '@/test/fixtures';
 import { BundlesPage, defaultReleaseSelection, groupByBundle, latestRetired } from './BundlesPage';
 
 describe('BundlesPage', () => {
@@ -36,6 +36,25 @@ describe('BundlesPage', () => {
     const failed = screen.getByTestId('bundle-row-core-v3');
     expect(within(failed).getByText(/OPA did not load revision/)).toBeInTheDocument();
     expect(within(failed).queryByRole('button', { name: 'Activate' })).not.toBeInTheDocument();
+  });
+
+  it('hides every write control and explains release mode when local policy administration is off', async () => {
+    server.use(
+      http.get('/api/v1/admin/policy-bundles', () => HttpResponse.json([])),
+      http.get('/api/v1/admin/policy-bundles/diagnostics', () =>
+        HttpResponse.json({ ...diagnostics, mode: 'release', source: 'file:/etc/governance/release.json' }),
+      ),
+    );
+    renderApp(<BundlesPage />, { token: ADMIN_TOKEN, config: { ...testConfig, localPolicyAdmin: false } });
+    const notice = await screen.findByTestId('release-mode-notice');
+    expect(notice).toHaveTextContent('POLICY_SOURCE_IS_GIT');
+    const release = await screen.findByTestId('release-card');
+    expect(within(release).getByText('Expected (release manifest)')).toBeInTheDocument();
+    expect(within(release).getByText(/file:\/etc\/governance\/release.json/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Upload bundles/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Activate release/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Rollback/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('No bundles uploaded')).not.toBeInTheDocument();
   });
 
   it('hides write controls from auditors', async () => {

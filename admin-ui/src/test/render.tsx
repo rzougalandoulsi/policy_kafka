@@ -3,7 +3,7 @@ import { render, type RenderOptions } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/auth/AuthProvider';
-import { loadConfig } from '@/config';
+import { loadConfig, type UiConfig } from '@/config';
 import { ADMIN_TOKEN } from './fixtures';
 
 export const testConfig = loadConfig({
@@ -15,6 +15,7 @@ export const testConfig = loadConfig({
   adminRole: 'governance-admin',
   auditorRole: 'governance-auditor',
   devTokenLogin: true,
+  localPolicyAdmin: true,
 });
 
 /**
@@ -27,8 +28,9 @@ export function renderApp(
     token = ADMIN_TOKEN,
     route = '/',
     path = '*',
+    config = testConfig,
     ...options
-  }: RenderOptions & { token?: string | null; route?: string; path?: string } = {},
+  }: RenderOptions & { token?: string | null; route?: string; path?: string; config?: UiConfig } = {},
 ) {
   if (token) sessionStorage.setItem('governance-ui.dev-token', token);
   const qc = new QueryClient({
@@ -36,7 +38,7 @@ export function renderApp(
   });
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>
-      <AuthProvider cfg={testConfig}>
+      <AuthProvider cfg={config}>
         <MemoryRouter
           initialEntries={[route]}
           future={{ v7_startTransition: true, v7_relativeSplatPath: true }}

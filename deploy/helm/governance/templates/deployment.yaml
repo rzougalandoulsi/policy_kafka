@@ -1,0 +1,216 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "governance.fullname" . }}
+  labels:
+    {{- include "governance.labels" . | nindent 4 }}
+  annotations:
+    governance.itland.com/release-id: {{ include "governance.releaseId" . | quote }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "governance.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "governance.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # A new policy release or configuration rolls the pods; each pod is ready only once its sidecar runs the set.
+        checksum/release: {{ include "governance.release" . | sha256sum }}
+        checksum/config: {{ printf "%s%s" (include "governance.opaConfig" .) (include (print $.Template.BasePath "/configmap-governance.yaml") .) | sha256sum }}
+        governance.itland.com/release-id: {{ include "governance.releaseId" . | quote }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "governance.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      shareProcessNamespace: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # restricted-v2 SCC: no runAsUser, no fsGroup; the namespace range assigns the UID.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "governance.selectorLabels" . | nindent 20 }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: governance
+          image: {{ include "governance.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.governance.port }}
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: openshift
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: optional:file:/etc/governance/config/
+            - name: GOVERNANCE_POLICY_RELEASE_FILE
+              value: /etc/governance/release.json
+            - name: OPA_URL
+              value: http://127.0.0.1:8181
+            - name: GOVERNANCE_PORT
+              value: {{ .Values.governance.port | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.governance.logFormat | quote }}
+            - name: JAVA_TOOL_OPTIONS
+              value: {{ .Values.governance.javaToolOptions | quote }}
+            - name: GOVERNANCE_DB_URL
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.db.name }}, key: {{ .Values.secrets.db.keys.url }} } }
+            - name: GOVERNANCE_DB_USER
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.db.name }}, key: {{ .Values.secrets.db.keys.username }} } }
+            - name: GOVERNANCE_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.db.name }}, key: {{ .Values.secrets.db.keys.password }} } }
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.kafka.name }}, key: {{ .Values.secrets.kafka.keys.bootstrapServers }} } }
+            - name: KAFKA_SECURITY_PROTOCOL
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.kafka.name }}, key: {{ .Values.secrets.kafka.keys.securityProtocol }}, optional: true } }
+            - name: KAFKA_SASL_MECHANISM
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.kafka.name }}, key: {{ .Values.secrets.kafka.keys.saslMechanism }}, optional: true } }
+            - name: KAFKA_SASL_JAAS_CONFIG
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.kafka.name }}, key: {{ .Values.secrets.kafka.keys.saslJaasConfig }}, optional: true } }
+            - name: SCHEMA_REGISTRY_URL
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.kafka.name }}, key: {{ .Values.secrets.kafka.keys.schemaRegistryUrl }} } }
+            - name: SCHEMA_REGISTRY_AUTH
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.kafka.name }}, key: {{ .Values.secrets.kafka.keys.schemaRegistryAuth }}, optional: true } }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: {{ .Values.governance.startupProbe.periodSeconds }}
+            failureThreshold: {{ .Values.governance.startupProbe.failureThreshold }}
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          # Includes the policyRelease indicator: DOWN until the sidecar runs exactly the mounted release.
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.governance.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: policy-release
+              mountPath: /etc/governance/release.json
+              subPath: release.json
+              readOnly: true
+            - name: governance-config
+              mountPath: /etc/governance/config
+              readOnly: true
+        - name: opa
+          image: {{ include "governance.opaImage" . }}
+          imagePullPolicy: IfNotPresent
+          # Data API on loopback only; the diagnostic listener (health, metrics) binds the pod IP for the kubelet.
+          args:
+            - run
+            - --server
+            - --addr=127.0.0.1:8181
+            - --diagnostic-addr=0.0.0.0:8282
+            - --config-file=/config/opa.yaml
+            - --log-format=json
+            - --log-level={{ .Values.opa.logLevel }}
+            - --disable-telemetry
+          env:
+            - name: ARTIFACTORY_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.artifactory.tokenSecret.name }}, key: {{ .Values.artifactory.tokenSecret.key }} } }
+          ports:
+            - name: diagnostics
+              containerPort: 8282
+              protocol: TCP
+          livenessProbe:
+            httpGet: { path: /health, port: diagnostics }
+            periodSeconds: 10
+          # Fails until every configured bundle has been downloaded, verified and activated.
+          readinessProbe:
+            httpGet: { path: "/health?bundles&plugins", port: diagnostics }
+            periodSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet: { path: /health, port: diagnostics }
+            periodSeconds: 5
+            failureThreshold: 24
+          resources:
+            {{- toYaml .Values.opa.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: opa-config
+              mountPath: /config
+              readOnly: true
+            - name: opa-data
+              mountPath: /var/opa
+            - name: opa-tmp
+              mountPath: /tmp
+            {{- if .Values.artifactory.caBundleConfigMap }}
+            - name: artifactory-ca
+              mountPath: /etc/opa/ca
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: opa-tmp
+          emptyDir: {}
+        - name: opa-data
+          emptyDir: {}
+        - name: policy-release
+          configMap:
+            name: {{ include "governance.fullname" . }}-policy-release
+        - name: governance-config
+          configMap:
+            name: {{ include "governance.fullname" . }}-config
+        - name: opa-config
+          configMap:
+            name: {{ include "governance.fullname" . }}-opa-config
+        {{- if .Values.artifactory.caBundleConfigMap }}
+        - name: artifactory-ca
+          configMap:
+            name: {{ .Values.artifactory.caBundleConfigMap }}
+        {{- end }}

@@ -1,0 +1,181 @@
+# Application deployment (plan section 9): build and push the images tagged with the git sha, deploy with Helm
+# (--wait --atomic) to the chosen OpenShift namespace, verify liveness, readiness and the policy release on every
+# pod, run the smoke, and hand over to the policy repository's Workflow D. Pushes to main deploy dev; staging and
+# production are manual (workflow_dispatch or a version tag) through protected GitHub environments.
+#
+# [A] inputs, referenced by name only (repository/environment variables and secrets):
+#   CONTAINER_REGISTRY, CONTAINER_REGISTRY_NAMESPACE   e.g. registry.example.com / governance
+#   REGISTRY_USERNAME, REGISTRY_PASSWORD (secrets)      robot account; use OIDC federation where the registry supports it
+#   OPENSHIFT_SERVER, OPENSHIFT_NAMESPACE (env vars)     cluster API URL and the environment's namespace
+#   OPENSHIFT_TOKEN (env secret)                         short-lived or rotated namespaced ServiceAccount token
+#   GOVERNANCE_BASE_URL (env var)                        the Route of the environment
+#   SMOKE_TOKEN_URL, SMOKE_CLIENT_ID, SMOKE_CLIENT_SECRET (env)  IdP test client with the sandbox team (dev, staging)
+#   POLICIES_REPOSITORY (var)                            ORG/governance-policies, to trigger verify.yml (Workflow D, Phase 5)
+#   POLICIES_DISPATCH_TOKEN (secret)                     fine-grained token with actions:write on that repository
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [dev, staging, production]
+        default: dev
+      image_tag:
+        description: "Image tag to deploy (default: this commit's sha, built by this run)"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: "21"
+  TARGET_ENV: ${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'staging') || 'dev' }}
+
+jobs:
+  images:
+    name: build and push images
+    if: github.event.inputs.image_tag == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      governance-digest: ${{ steps.push-governance.outputs.digest }}
+      admin-ui-digest: ${{ steps.push-admin-ui.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - run: mvn -B -ntp -DskipTests package
+      - id: meta
+        run: |
+          tag="$(git rev-parse --short=12 HEAD)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "image tag: $tag" >> "$GITHUB_STEP_SUMMARY"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ vars.CONTAINER_REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Push governance
+        id: push-governance
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: governance
+          push: true
+          provenance: false
+          tags: |
+            ${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_REGISTRY_NAMESPACE }}/governance:${{ steps.meta.outputs.tag }}
+            ${{ startsWith(github.ref, 'refs/tags/v') && format('{0}/{1}/governance:{2}', vars.CONTAINER_REGISTRY, vars.CONTAINER_REGISTRY_NAMESPACE, github.ref_name) || '' }}
+      - name: Push admin-ui
+        id: push-admin-ui
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: admin-ui
+          push: true
+          provenance: false
+          tags: |
+            ${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_REGISTRY_NAMESPACE }}/admin-ui:${{ steps.meta.outputs.tag }}
+            ${{ startsWith(github.ref, 'refs/tags/v') && format('{0}/{1}/admin-ui:{2}', vars.CONTAINER_REGISTRY, vars.CONTAINER_REGISTRY_NAMESPACE, github.ref_name) || '' }}
+      - name: Trivy on the pushed images (CRITICAL blocks the deploy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_REGISTRY_NAMESPACE }}/governance:${{ steps.meta.outputs.tag }}
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL
+      - name: SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_REGISTRY_NAMESPACE }}/governance:${{ steps.meta.outputs.tag }}
+          artifact-name: sbom-governance-${{ steps.meta.outputs.tag }}.spdx.json
+
+  deploy:
+    name: deploy ${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'staging') || 'dev' }}
+    needs: [images]
+    if: always() && (needs.images.result == 'success' || needs.images.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: ${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'staging') || 'dev' }}
+      url: ${{ vars.GOVERNANCE_BASE_URL }}
+    env:
+      IMAGE_TAG: ${{ github.event.inputs.image_tag || needs.images.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.19.0
+      - name: Log in to OpenShift (namespaced ServiceAccount token from the environment) [A]
+        uses: redhat-actions/oc-login@2a1614bc977c054c8786c8e35fc9534bd0ddc156 # v2.0.1
+        with:
+          openshift_server_url: ${{ vars.OPENSHIFT_SERVER }}
+          openshift_token: ${{ secrets.OPENSHIFT_TOKEN }}
+          namespace: ${{ vars.OPENSHIFT_NAMESPACE }}
+      - name: helm upgrade governance and admin-ui (--wait --atomic rolls back when a pod never becomes ready)
+        run: |
+          helm upgrade --install governance deploy/helm/governance \
+            -n "${{ vars.OPENSHIFT_NAMESPACE }}" \
+            -f "deploy/helm/governance/values-${TARGET_ENV}.yaml" \
+            --set image.repository="${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_REGISTRY_NAMESPACE }}/governance" \
+            --set image.tag="$IMAGE_TAG" \
+            ${{ needs.images.outputs.governance-digest && format('--set image.digest={0}', needs.images.outputs.governance-digest) || '' }} \
+            --wait --atomic --timeout 10m
+          helm upgrade --install governance-admin-ui deploy/helm/admin-ui \
+            -n "${{ vars.OPENSHIFT_NAMESPACE }}" \
+            -f "deploy/helm/admin-ui/values-${TARGET_ENV}.yaml" \
+            --set image.repository="${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_REGISTRY_NAMESPACE }}/admin-ui" \
+            --set image.tag="$IMAGE_TAG" \
+            ${{ needs.images.outputs.admin-ui-digest && format('--set image.digest={0}', needs.images.outputs.admin-ui-digest) || '' }} \
+            --wait --atomic --timeout 10m
+          oc -n "${{ vars.OPENSHIFT_NAMESPACE }}" rollout status deployment/governance --timeout=10m
+          oc -n "${{ vars.OPENSHIFT_NAMESPACE }}" rollout status deployment/governance-admin-ui --timeout=5m
+      - name: Smoke token from the environment's IdP test client [A]
+        id: smoke-token
+        if: vars.SMOKE_TOKEN_URL != ''
+        env:
+          TOKEN_URL: ${{ vars.SMOKE_TOKEN_URL }}
+          CLIENT_ID: ${{ vars.SMOKE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.SMOKE_CLIENT_SECRET }}
+        run: |
+          token="$(curl -sSf -X POST "$TOKEN_URL" -d grant_type=client_credentials -d client_id="$CLIENT_ID" -d client_secret="$CLIENT_SECRET" -d scope=governance \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+      - name: Post-deploy checks (health, readiness, release on every pod, smoke)
+        run: |
+          deploy/scripts/post-deploy-check.sh --base-url "${{ vars.GOVERNANCE_BASE_URL }}" --environment "$TARGET_ENV" \
+            --namespace "${{ vars.OPENSHIFT_NAMESPACE }}" --deployment governance \
+            ${{ steps.smoke-token.outputs.token && format('--token {0}', steps.smoke-token.outputs.token) || '' }} | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Workflow D (verify.yml in the policy repository, Phase 5) [A]
+        if: vars.POLICIES_REPOSITORY != ''
+        env:
+          GH_TOKEN: ${{ secrets.POLICIES_DISPATCH_TOKEN }}
+        run: gh workflow run verify.yml -R "${{ vars.POLICIES_REPOSITORY }}" -f environment="$TARGET_ENV" -f releaseId="$(python3 -c 'import json; print(json.load(open("deploy/helm/governance/releases/'"$TARGET_ENV"'.json"))["releaseId"])')"
+      - name: Summary
+        run: |
+          {
+            echo "### deploy $TARGET_ENV"
+            echo "- image tag: \`$IMAGE_TAG\`"
+            echo "- policy release: \`$(python3 -c 'import json; print(json.load(open("deploy/helm/governance/releases/'"$TARGET_ENV"'.json"))["releaseId"])')\`"
+          } >> "$GITHUB_STEP_SUMMARY"

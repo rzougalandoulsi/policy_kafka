@@ -1,0 +1,56 @@
+# Admin console. [A] values must be confirmed per environment.
+environment: dev
+replicaCount: 2
+
+image:
+  repository: registry.example.com/governance/admin-ui             # [A]
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# nginx listens on 8080 (non-root); the proxy targets the Governance Service in the same namespace.
+port: 8080
+governanceServiceUrl: http://governance:8080
+
+oidc:
+  issuer: https://idp.example.com/realms/platform                   # [A] must equal Governance's issuer
+  upstreamUrl: https://idp.example.com                              # [A] origin proxied under /oidc/
+  upstreamHost: idp.example.com                                     # [A]
+  clientId: governance-admin-console                                # [A] public client
+  scope: openid governance
+  endpointBase: ""                                                  # empty = discovery
+rolesClaim: roles
+adminRole: governance-admin
+auditorRole: governance-auditor
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { cpu: 200m, memory: 128Mi }
+
+route:
+  enabled: true
+  host: ""                                                          # [A]
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+serviceAccount:
+  create: true
+  name: ""
+
+networkPolicy:
+  enabled: true
+  ingressNamespaceSelector: { matchLabels: { network.openshift.io/policy-group: ingress } }   # [A]
+  dnsNamespaceSelector: { matchLabels: { kubernetes.io/metadata.name: openshift-dns } }
+  # Egress to the Governance pods is generated; add the identity provider here [A].
+  egress: []
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []

@@ -1,0 +1,14 @@
+# staging admin console. [A] values are placeholders.
+environment: staging
+image:
+  repository: registry.example.com/governance/admin-ui             # [A]
+governanceServiceUrl: http://governance:8080
+oidc:
+  issuer: https://idp-staging.example.com/realms/platform   # [A]
+  upstreamUrl: https://idp-staging.example.com              # [A]
+  upstreamHost: idp-staging.example.com                     # [A]
+  clientId: governance-admin-console                                # [A]
+route:
+  host: governance-console-staging.apps.example.com          # [A]
+networkPolicy:
+  egress: []                                                        # [A] identity provider

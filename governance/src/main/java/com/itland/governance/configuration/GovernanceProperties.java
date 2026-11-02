@@ -50,7 +50,20 @@ public record GovernanceProperties(
       /** Input contract version OpaInputAssembler produces (contracts/opa/input.schema.json). */
       @DefaultValue("2.0") String contractVersion,
       /** Core contract majors this build accepts in decisions; a major bump ships Governance first (both), then policies. */
-      @DefaultValue({"1", "2"}) List<String> supportedContractMajors) {}
+      @DefaultValue({"1", "2"}) List<String> supportedContractMajors,
+      /**
+       * {@code local}: ACTIVE bundle versions in the database, served to OPA by Governance, administered through the API.
+       * {@code release}: the release manifest at {@code releaseFile} is the only source; OPA pulls pinned revisions from
+       * Artifactory and the local administration endpoints answer 409 POLICY_SOURCE_IS_GIT.
+       */
+      @DefaultValue("local") String mode,
+      /** Release manifest file (contracts/release-manifest.schema.json) mounted from the deployment; required in release mode. */
+      String releaseFile) {
+
+    public boolean releaseMode() {
+      return "release".equalsIgnoreCase(mode);
+    }
+  }
 
   public record Security(
       String issuerUri,

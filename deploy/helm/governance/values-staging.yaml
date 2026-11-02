@@ -1,0 +1,22 @@
+# staging: protected GitHub environment (required reviewers) for promotions and deploys. [A] values are placeholders.
+environment: staging
+replicaCount: 2
+image:
+  repository: registry.example.com/governance/governance          # [A]
+opa:
+  image:
+    digest: ""                                                     # [A]
+artifactory:
+  url: https://artifactory.example.com/artifactory                # [A]
+  repositoryKey: opa-bundles                                       # [A]
+signing:
+  publicKey: ""                                                    # [A]
+governance:
+  oidc:
+    issuerUri: https://idp-staging.example.com/realms/platform     # [A]
+route:
+  host: governance-staging.apps.example.com                        # [A]
+networkPolicy:
+  egress: []                                                       # [A]
+externalSecrets:
+  enabled: false                                                   # [A]

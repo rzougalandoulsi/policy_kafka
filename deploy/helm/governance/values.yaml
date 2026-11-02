@@ -1,0 +1,146 @@
+# Default values for the governance chart. Environment files (values-dev.yaml, values-staging.yaml,
+# values-production.yaml) override the [A] inputs: registry, Artifactory, hosts, namespaces, secret stores.
+# Every value marked [A] must be confirmed with the platform owners before the first deploy.
+
+# Selects releases/<environment>.json (the promoted policy release) unless release.file overrides it.
+environment: dev
+
+replicaCount: 2
+
+image:
+  repository: registry.example.com/governance/governance   # [A] approved registry
+  tag: ""                                                   # set by the deploy workflow (git sha)
+  digest: ""                                                # optional, takes precedence over tag
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+opa:
+  image:
+    repository: openpolicyagent/opa
+    tag: 1.22.0-static
+    digest: ""                                              # pin the digest per environment [A]
+  logLevel: info
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  polling:
+    minDelaySeconds: 60
+    maxDelaySeconds: 120
+
+# Where the sidecar pulls the pinned revisions from. The token is read from a Secret (read-only scope on the repository).
+artifactory:
+  url: https://artifactory.example.com/artifactory         # [A]
+  repositoryKey: opa-bundles                                # [A]
+  tokenSecret:
+    name: artifactory-opa-reader
+    key: token
+  # Optional ConfigMap holding the enterprise CA bundle (key ca.crt) when Artifactory uses a private CA [A].
+  caBundleConfigMap: ""
+  responseHeaderTimeoutSeconds: 30
+
+# Bundle signature verification (mandatory in release mode). Public key of the key pair Workflow B signs with.
+signing:
+  keyId: governance-policies
+  # PEM public key; a rotation lists the new key under additionalKeys until every published revision uses it.
+  publicKey: ""                                             # [A] required: -----BEGIN PUBLIC KEY----- ...
+  additionalKeys: {}                                        # keyId -> PEM
+
+# The promoted policy release (contracts/release-manifest.schema.json). Defaults to releases/<environment>.json.
+release:
+  file: ""
+
+governance:
+  port: 8080
+  oidc:
+    issuerUri: https://idp.example.com/realms/platform      # [A]
+    teamsClaim: teams
+    environmentsClaim: environments
+    rolesClaim: roles
+  logFormat: ecs
+  javaToolOptions: "-XX:MaxRAMPercentage=75"
+  # Extra Spring configuration rendered into the governance-config ConfigMap (application.yml overrides).
+  config: {}
+  resources:
+    requests: { cpu: 500m, memory: 768Mi }
+    limits: { cpu: "2", memory: 1.5Gi }
+  startupProbe: { periodSeconds: 5, failureThreshold: 60 }
+
+# Secrets the pods read (created by External Secrets or by the platform; see README for the key contract).
+secrets:
+  db:
+    name: governance-db
+    keys: { url: url, username: username, password: password }
+  kafka:
+    name: governance-kafka
+    keys:
+      bootstrapServers: bootstrap-servers
+      securityProtocol: security-protocol
+      saslMechanism: sasl-mechanism
+      saslJaasConfig: sasl-jaas-config
+      schemaRegistryUrl: schema-registry-url
+      schemaRegistryAuth: schema-registry-auth
+
+# External Secrets Operator objects for the three Secrets above (otherwise the platform must create them) [A].
+externalSecrets:
+  enabled: false
+  refreshInterval: 1h
+  secretStoreRef: { name: platform-vault, kind: ClusterSecretStore }
+  remoteRefs:
+    db: { url: governance/db/url, username: governance/db/username, password: governance/db/password }
+    kafka:
+      bootstrapServers: governance/kafka/bootstrap-servers
+      securityProtocol: governance/kafka/security-protocol
+      saslMechanism: governance/kafka/sasl-mechanism
+      saslJaasConfig: governance/kafka/sasl-jaas-config
+      schemaRegistryUrl: governance/kafka/schema-registry-url
+      schemaRegistryAuth: governance/kafka/schema-registry-auth
+    artifactory: { token: governance/artifactory/opa-reader-token }
+
+service:
+  port: 8080
+
+route:
+  enabled: true
+  host: ""                                                  # [A] e.g. governance-dev.apps.example.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+networkPolicy:
+  enabled: true
+  # Namespaces allowed to reach port 8080 (OpenShift router) and 8282 (monitoring).
+  ingressNamespaceSelector: { matchLabels: { network.openshift.io/policy-group: ingress } }       # [A]
+  monitoringNamespaceSelector: { matchLabels: { network.openshift.io/policy-group: monitoring } } # [A]
+  dnsNamespaceSelector: { matchLabels: { kubernetes.io/metadata.name: openshift-dns } }
+  # Egress targets (Postgres, Kafka, Schema Registry, Artifactory, IdP). Each entry is a NetworkPolicy egress rule [A].
+  egress: []
+  #  - to: [{ipBlock: {cidr: 10.0.0.0/8}}]
+  #    ports: [{port: 5432, protocol: TCP}, {port: 9093, protocol: TCP}]
+  #  - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
+  #    ports: [{port: 443, protocol: TCP}]
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  labels: {}
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+topologySpreadConstraints: []

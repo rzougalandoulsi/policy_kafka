@@ -14,6 +14,11 @@ export interface UiConfig {
   auditorRole: string;
   /** Dev-only paste-a-token login. Never enable against a real identity provider. */
   devTokenLogin: boolean;
+  /**
+   * Local policy administration (upload, activate, roll back bundles). False in deployed environments, where
+   * Governance runs in release mode and the policy set comes from the governance-policies release manifest.
+   */
+  localPolicyAdmin: boolean;
 }
 
 const env = import.meta.env;
@@ -35,6 +40,7 @@ export function loadConfig(overrides: Partial<UiConfig> | undefined = window.__G
     adminRole: o.adminRole ?? env.VITE_ADMIN_ROLE ?? 'governance-admin',
     auditorRole: o.auditorRole ?? env.VITE_AUDITOR_ROLE ?? 'governance-auditor',
     devTokenLogin: flag(o.devTokenLogin ?? env.VITE_DEV_TOKEN_LOGIN, false),
+    localPolicyAdmin: flag(o.localPolicyAdmin ?? env.VITE_LOCAL_POLICY_ADMIN, true),
   };
 }
 

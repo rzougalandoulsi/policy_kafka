@@ -9,4 +9,5 @@ window.__GOVERNANCE_UI__ = {
   adminRole: 'governance-admin',
   auditorRole: 'governance-auditor',
   devTokenLogin: true,
+  localPolicyAdmin: true,
 };

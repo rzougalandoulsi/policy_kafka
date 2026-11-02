@@ -10,6 +10,7 @@ import {
   useRollbackBundle,
 } from '@/api/hooks';
 import { BUNDLE_NAMES, type PolicyBundleVersion, type RevisionDiagnostics } from '@/api/types';
+import { useAuth } from '@/auth/AuthProvider';
 import { AdminOnly } from '@/auth/guards';
 import { Badge, StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -63,6 +64,8 @@ export function defaultReleaseSelection(versions: PolicyBundleVersion[]): Record
 }
 
 export function BundlesPage() {
+  const { config } = useAuth();
+  const localAdmin = config.localPolicyAdmin;
   const bundles = useBundles();
   const diagnostics = useDiagnostics();
   const activate = useActivateBundle();
@@ -82,19 +85,34 @@ export function BundlesPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Policy bundles"
-        description="Six independently versioned Rego bundles, one per root governance/<name>. The ACTIVE version of each forms the policy release OPA must run; every decision records the release id and the revision OPA reported per bundle. Activation is verified against OPA and a version OPA does not adopt within 90 seconds is reverted automatically."
+        description={
+          localAdmin
+            ? 'Six independently versioned Rego bundles, one per root governance/<name>. The ACTIVE version of each forms the policy release OPA must run; every decision records the release id and the revision OPA reported per bundle. Activation is verified against OPA and a version OPA does not adopt within 90 seconds is reverted automatically.'
+            : 'Six independently versioned Rego bundles, one per root governance/<name>. In this environment the policy release is pinned by the mounted release manifest and OPA pulls the signed revisions from Artifactory; every decision records the release id and the revision OPA reported per bundle.'
+        }
         actions={
-          <AdminOnly>
-            <Button variant="secondary" onClick={() => setReleaseOpen(true)} disabled={versions.length === 0}>
-              <Layers className="h-4 w-4" aria-hidden /> Activate release
-            </Button>
-            <Button onClick={() => setUploadOpen(true)}>
-              <Upload className="h-4 w-4" aria-hidden /> Upload bundles
-            </Button>
-          </AdminOnly>
+          localAdmin ? (
+            <AdminOnly>
+              <Button variant="secondary" onClick={() => setReleaseOpen(true)} disabled={versions.length === 0}>
+                <Layers className="h-4 w-4" aria-hidden /> Activate release
+              </Button>
+              <Button onClick={() => setUploadOpen(true)}>
+                <Upload className="h-4 w-4" aria-hidden /> Upload bundles
+              </Button>
+            </AdminOnly>
+          ) : undefined
         }
       />
       <DiagnosticsBanner />
+      {!localAdmin && (
+        <div data-testid="release-mode-notice">
+          <InlineAlert tone="info">
+            Policies are managed in the governance-policies repository: a change reaches this environment through a
+            promoted release (Workflows B and C), never through this console. Upload, activation and rollback are
+            disabled here and the API answers <code>409 POLICY_SOURCE_IS_GIT</code>.
+          </InlineAlert>
+        </div>
+      )}
       {watching && <ActivationWatcher target={watching} onDismiss={() => setWatching(null)} />}
 
       <ReleaseCard diagnostics={diagnostics.data} />
@@ -108,12 +126,14 @@ export function BundlesPage() {
           <ErrorState error={bundles.error} onRetry={() => bundles.refetch()} />
         </Card>
       ) : versions.length === 0 ? (
-        <Card>
-          <EmptyState
-            title="No bundles uploaded"
-            description="Build them with policies/build.sh and upload them here, or run deploy/scripts/upload-release.sh."
-          />
-        </Card>
+        localAdmin ? (
+          <Card>
+            <EmptyState
+              title="No bundles uploaded"
+              description="Build them with policies/build.sh and upload them here, or run deploy/scripts/upload-release.sh."
+            />
+          </Card>
+        ) : null
       ) : (
         groups.map(([name, list]) => {
           const active = list.find((v) => v.status === 'ACTIVE');
@@ -142,6 +162,7 @@ export function BundlesPage() {
                   </span>
                 }
                 actions={
+                  localAdmin && (
                   <AdminOnly>
                     <Button
                       size="sm"
@@ -157,6 +178,7 @@ export function BundlesPage() {
                       <Undo2 className="h-4 w-4" aria-hidden /> Rollback
                     </Button>
                   </AdminOnly>
+                  )
                 }
               />
               <Table>
@@ -202,13 +224,15 @@ export function BundlesPage() {
                       <TD>{formatInstant(b.activatedAt)}</TD>
                       <TD className="max-w-xs text-xs text-danger">{b.failureReason ?? ''}</TD>
                       <TD className="text-right">
-                        <AdminOnly>
-                          {(b.status === 'UPLOADED' || b.status === 'RETIRED') && (
-                            <Button size="sm" variant="secondary" onClick={() => setActivateTarget(b)}>
-                              Activate
-                            </Button>
-                          )}
-                        </AdminOnly>
+                        {localAdmin && (
+                          <AdminOnly>
+                            {(b.status === 'UPLOADED' || b.status === 'RETIRED') && (
+                              <Button size="sm" variant="secondary" onClick={() => setActivateTarget(b)}>
+                                Activate
+                              </Button>
+                            )}
+                          </AdminOnly>
+                        )}
                       </TD>
                     </TR>
                   ))}
@@ -306,7 +330,11 @@ function ReleaseCard({ diagnostics }: { diagnostics: RevisionDiagnostics | undef
     <Card data-testid="release-card">
       <CardHeader
         title="Policy release"
-        description="One ACTIVE version per bundle. Governance fails closed unless OPA runs exactly this set and the core bundle reports the composition ready."
+        description={
+          diagnostics.mode === 'release'
+            ? `Pinned by the mounted release manifest (${diagnostics.source ?? 'release file'}). Governance fails closed unless OPA runs exactly this set and the core bundle reports the composition ready.`
+            : 'One ACTIVE version per bundle. Governance fails closed unless OPA runs exactly this set and the core bundle reports the composition ready.'
+        }
         actions={
           <>
             {diagnostics.releaseId ? (
@@ -327,7 +355,7 @@ function ReleaseCard({ diagnostics }: { diagnostics: RevisionDiagnostics | undef
         <THead>
           <TR>
             <TH>Bundle</TH>
-            <TH>Expected (ACTIVE)</TH>
+            <TH>{diagnostics.mode === 'release' ? 'Expected (release manifest)' : 'Expected (ACTIVE)'}</TH>
             <TH>OPA reports</TH>
             <TH>State</TH>
           </TR>
@@ -342,7 +370,7 @@ function ReleaseCard({ diagnostics }: { diagnostics: RevisionDiagnostics | undef
                 <TD className="mono text-xs">{b?.loaded ?? 'nothing'}</TD>
                 <TD>
                   {!b?.expected ? (
-                    <Badge tone="warn">no active version</Badge>
+                    <Badge tone="warn">{diagnostics.mode === 'release' ? 'not in manifest' : 'no active version'}</Badge>
                   ) : (
                     <Badge tone={b.match ? 'ok' : 'danger'}>{b.match ? 'in sync' : 'mismatch'}</Badge>
                   )}

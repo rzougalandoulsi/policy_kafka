@@ -59,10 +59,12 @@ public class PolicyBundleService {
   private final GovernanceMetrics metrics;
   private final TransactionTemplate tx;
   private final List<String> bundles;
+  private final PolicyReleaseSource source;
 
   public PolicyBundleService(PolicyBundleRepository repository, AuditService audit, Json json, Clock clock, OpaClient opa,
-                             GovernanceMetrics metrics, TransactionTemplate tx, GovernanceProperties properties) {
+                             GovernanceMetrics metrics, TransactionTemplate tx, GovernanceProperties properties, PolicyReleaseSource source) {
     this.repository = repository;
+    this.source = source;
     this.audit = audit;
     this.json = json;
     this.clock = clock;
@@ -87,18 +89,29 @@ public class PolicyBundleService {
     return repository.findById(id).orElseThrow(() -> new NotFoundException("Policy bundle " + id + " not found"));
   }
 
+  /** Where the expected release comes from (local database or a mounted release manifest). */
+  public PolicyReleaseSource source() {
+    return source;
+  }
+
+  /** Local-only administration: in release mode the set is defined by the mounted manifest and cannot be changed here. */
+  private void requireLocal(String operation) {
+    if (!source.local()) throw new PolicySourceIsGitException(operation, source.description());
+  }
+
+  /** Bytes OPA pulls in local mode; empty in release mode (OPA pulls pinned artifacts from Artifactory instead). */
   public Optional<Served> serveActive(String bundleName) {
+    if (!source.local()) return Optional.empty();
     return repository.findActive(bundleName).flatMap(v -> repository.loadBytes(v.id()).map(b -> new Served(b, v.revision(), v.sha256())));
   }
 
-  /** The current release: ACTIVE revision per bundle name, or empty when nothing is active. */
+  /** The release Governance expects OPA to run (ACTIVE versions in local mode, the mounted manifest in release mode). */
   public Optional<PolicyRelease> activeRelease() {
-    Map<String, String> revisions = new TreeMap<>();
-    for (PolicyBundleVersion v : repository.findActiveAll()) revisions.put(v.bundleName(), v.revision());
-    return revisions.isEmpty() ? Optional.empty() : Optional.of(PolicyRelease.of(revisions));
+    return source.expected();
   }
 
   public PolicyBundleVersion upload(byte[] bundle, String testReportJson, String comment, String actor) {
+    requireLocal("upload");
     Map<String, Object> manifest = inspect(bundle);
     String name = bundleNameOf(manifest);
     String revision = String.valueOf(manifest.get("revision"));
@@ -117,6 +130,7 @@ public class PolicyBundleService {
   }
 
   public PolicyBundleVersion activate(String id, String actor) {
+    requireLocal("activate");
     PolicyBundleVersion target = get(id);
     if (target.status() == VersionStatus.ACTIVE) return target;
     if (target.status() == VersionStatus.FAILED) {
@@ -135,6 +149,7 @@ public class PolicyBundleService {
    * wraps this in a transaction), so OPA never observes a half-switched set that Governance would also reject.
    */
   public PolicyRelease activateRelease(List<String> versionIds, String actor) {
+    requireLocal("activate release");
     if (versionIds == null || versionIds.isEmpty()) throw new IllegalArgumentException("versionIds is required");
     Map<String, PolicyBundleVersion> byName = new LinkedHashMap<>();
     for (String id : new LinkedHashSet<>(versionIds)) {
@@ -152,6 +167,7 @@ public class PolicyBundleService {
 
   /** Restores the most recently retired version of one bundle. */
   public PolicyBundleVersion rollback(String bundleName, String actor) {
+    requireLocal("rollback");
     requireKnown(bundleName);
     PolicyBundleVersion previous = repository.latestRetired(bundleName)
         .orElseThrow(() -> new IllegalStateException("No retired version of bundle " + bundleName + " to roll back to"));
@@ -162,8 +178,11 @@ public class PolicyBundleService {
 
   public record BundleDiagnostics(String expected, String loaded, boolean match) {}
 
-  /** Expected release versus what OPA runs, per bundle. {@code match} is true only when every required bundle agrees. */
-  public record RevisionDiagnostics(String releaseId, boolean match, boolean ready, Map<String, BundleDiagnostics> bundles) {}
+  /**
+   * Expected release versus what OPA runs, per bundle. {@code match} is true only when every required bundle agrees.
+   * {@code mode} is {@code local} or {@code release}; {@code source} names where the expected release comes from.
+   */
+  public record RevisionDiagnostics(String releaseId, boolean match, boolean ready, Map<String, BundleDiagnostics> bundles, String mode, String source) {}
 
   /** Blocking (worker/scheduler threads only). */
   public RevisionDiagnostics diagnostics() {
@@ -189,12 +208,13 @@ public class PolicyBundleService {
     }
     boolean nothingAnywhere = release.isEmpty() && loaded.isEmpty();
     metrics.policyRevisionMatch(nothingAnywhere ? null : allMatch);
-    return new RevisionDiagnostics(release.map(PolicyRelease::id).orElse(null), allMatch, ready, perBundle);
+    return new RevisionDiagnostics(release.map(PolicyRelease::id).orElse(null), allMatch, ready, perBundle, source.mode(), source.description());
   }
 
   /** Verifies OPA adopted every active bundle; rolls back a version OPA could not load within the grace period. */
   @Scheduled(fixedDelayString = "${governance.opa.revision-check-interval:15s}", initialDelayString = "15s")
   public void verifyActivation() {
+    if (!source.local()) return; // release mode: the set is pinned by the manifest; rollback is a promotion (Workflow E)
     try {
       RevisionDiagnostics d = diagnostics();
       if (d.match()) return;
