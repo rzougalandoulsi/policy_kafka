@@ -33,6 +33,9 @@
     <confluent.version>8.0.0</confluent.version>
     <avro.version>1.11.4</avro.version>
     <springdoc.version>3.2.0</springdoc.version>
+    <!-- Embedded BPMN engine of the Governance approvals (ADR 0011). 8.0.0 is the first Flowable line built for
+         Spring Boot 4 / Spring Framework 7 / Jackson 3; 7.x does not start on Boot 4. -->
+    <flowable.version>8.0.0</flowable.version>
   </properties>
 
   <repositories>
@@ -73,6 +76,11 @@
         <groupId>org.springdoc</groupId>
         <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
         <version>${springdoc.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.flowable</groupId>
+        <artifactId>flowable-spring-boot-starter-process</artifactId>
+        <version>${flowable.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

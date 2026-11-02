@@ -4,7 +4,7 @@ Three services around a Kafka backbone:
 
 | Service | Role | Module |
 |---|---|---|
-| **Governance** (new) | Public REST entry point: OAuth2 JWT, OPA policy evaluation (two stages), approvals, scoped exceptions, audit, Kafka handshake | `governance/` |
+| **Governance** (new) | Public REST entry point: OAuth2 JWT, OPA policy evaluation (two stages), human approvals on an embedded Flowable BPMN engine, scoped exceptions, audit, Kafka handshake | `governance/` |
 | **Orchestrator** (existing, not implemented here) | Diff desired vs confirmed state, propose immutable plans, release only authorized plans, reconcile results | stand-in: `orchestrator-simulator/`; requirements: `docs/orchestrator-integration.md` |
 | **Processor** (existing, not implemented here) | Executes actions against Confluent Cloud | stand-in: `processor-simulator/` |
 | **Admin UI** (new) | Browser console for team configuration, policy configuration (incl. shadow mode), Rego bundles and releases, scoped exceptions, approval rules, shadow findings and audit (OIDC login, roles from the token, API stays the enforcer) | `admin-ui/` |
@@ -67,5 +67,5 @@ page); auditors can use `deploy/scripts/token.sh` with the dev token form. See `
 - `policies/docs/` — the policy repository's own guides: bundle authoring, contract, Workflows A to E operations, extraction checklist
 - `docs/policy-inventory.html` — generated rules and bundle inventory: every policy id with severity, bypassability, stages, inputs read, Rego location, tests and fixtures, plus the six bundles and the revision each environment pins (`policies/scripts/inventory.sh`; open from a checkout)
 - `docs/admin-ui.md` — the admin console: pages, roles, sign-in and proxy setup, configuration, troubleshooting
-- `docs/adr/` — architecture decision records
+- `docs/adr/` — architecture decision records (`0011` embeds the Flowable engine for approvals: same datasource, outbox unchanged, OPA stays the decision point)
 - `docs/open-phases-6-7.md` — the two open phases of the OPA programme (resource-type expansion, Orchestrator rule migration) with the inputs needed from the Orchestrator and Processor owners

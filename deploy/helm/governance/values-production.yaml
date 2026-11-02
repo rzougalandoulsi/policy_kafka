@@ -17,6 +17,10 @@ signing:
 governance:
   oidc:
     issuerUri: https://idp.example.com/realms/platform             # [A]
+  config:
+    governance:
+      workflow:
+        engine: flowable                                             # approval engine (ADR 0011): flowable | shadow | legacy
   resources:
     requests: { cpu: "1", memory: 1Gi }
     limits: { cpu: "2", memory: 2Gi }

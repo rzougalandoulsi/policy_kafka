@@ -2,6 +2,7 @@ package com.itland.governance.infrastructure.persistence;
 
 import com.itland.governance.configuration.Json;
 import com.itland.governance.domain.approval.ApprovalDecision;
+import com.itland.governance.domain.approval.ApprovalEngine;
 import com.itland.governance.domain.approval.ApprovalRequest;
 import com.itland.governance.domain.approval.ApprovalStatus;
 import com.itland.governance.domain.approval.ApprovalVerdict;
@@ -39,7 +40,8 @@ public class ApprovalRepository {
       rs.getString("plan_id"), rs.getString("plan_digest"), rs.getString("digest"), ApprovalStatus.valueOf(rs.getString("status")),
       rs.getString("requester_id"), rs.getInt("required_approvals"), json.readStrings(rs.getString("approver_roles")),
       rs.getBoolean("separation_of_duties"), json.read(rs.getString("requirements"), REQUIREMENTS), Jdbc.instant(rs, "expires_at"),
-      rs.getLong("version"), Jdbc.instant(rs, "created_at"), Jdbc.instant(rs, "resolved_at"), rs.getString("resolution_reason"));
+      rs.getLong("version"), Jdbc.instant(rs, "created_at"), Jdbc.instant(rs, "resolved_at"), rs.getString("resolution_reason"),
+      ApprovalEngine.valueOf(rs.getString("engine")), rs.getString("process_instance_id"));
   }
 
   private final RowMapper<ApprovalRequest> mapper = this::mapRow;
@@ -51,16 +53,21 @@ public class ApprovalRepository {
   public void insert(ApprovalRequest a) {
     jdbc.sql("""
         INSERT INTO approval_request (id, request_id, stage, decision_id, plan_id, plan_digest, digest, status, requester_id, required_approvals,
-          approver_roles, separation_of_duties, requirements, expires_at, version, created_at)
+          approver_roles, separation_of_duties, requirements, expires_at, version, created_at, engine, process_instance_id)
         VALUES (:id, :request, :stage, :decision, :plan, :planDigest, :digest, :status, :requester, :required, cast(:roles as jsonb), :sod,
-          cast(:requirements as jsonb), :expires, 0, :now)
+          cast(:requirements as jsonb), :expires, 0, :now, :engine, :process)
         """)
         .param("id", a.id()).param("request", a.requestId()).param("stage", a.stage().name()).param("decision", a.decisionId())
         .param("plan", a.planId()).param("planDigest", a.planDigest()).param("digest", a.digest()).param("status", a.status().name())
         .param("requester", a.requesterId()).param("required", a.requiredApprovals()).param("roles", json.write(a.approverRoles()))
         .param("sod", a.separationOfDuties()).param("requirements", json.write(a.requirements())).param("expires", Jdbc.ts(a.expiresAt()))
-        .param("now", Jdbc.ts(a.createdAt()))
+        .param("now", Jdbc.ts(a.createdAt())).param("engine", a.engine().name()).param("process", a.processInstanceId())
         .update();
+  }
+
+  /** Correlates the approval with the Flowable process instance started for it (same transaction as the start). */
+  public void bindProcess(String id, String processInstanceId) {
+    jdbc.sql("UPDATE approval_request SET process_instance_id = :p WHERE id = :id").param("p", processInstanceId).param("id", id).update();
   }
 
   public Optional<ApprovalRequest> findById(String id) {
@@ -85,8 +92,9 @@ public class ApprovalRepository {
     return jdbc.sql("SELECT * FROM approval_request WHERE request_id = :r AND status = 'PENDING'").param("r", requestId).query(mapper).list();
   }
 
+  /** Legacy rows only: Flowable approvals expire through their own boundary timer (ADR 0011). */
   public List<ApprovalRequest> findExpired(Instant now, int limit) {
-    return jdbc.sql("SELECT * FROM approval_request WHERE status = 'PENDING' AND expires_at <= :now ORDER BY expires_at LIMIT :l")
+    return jdbc.sql("SELECT * FROM approval_request WHERE status = 'PENDING' AND engine = 'LEGACY' AND expires_at <= :now ORDER BY expires_at LIMIT :l")
         .param("now", Jdbc.ts(now)).param("l", limit).query(mapper).list();
   }
 
@@ -97,6 +105,11 @@ public class ApprovalRepository {
 
   public long countPending() {
     return jdbc.sql("SELECT count(*) FROM approval_request WHERE status = 'PENDING'").query(Long.class).single();
+  }
+
+  /** Drain gauge of the migration: pending approvals still owned by the legacy implementation. */
+  public long countPending(ApprovalEngine engine) {
+    return jdbc.sql("SELECT count(*) FROM approval_request WHERE status = 'PENDING' AND engine = :e").param("e", engine.name()).query(Long.class).single();
   }
 
   /** Returns false when this approver already recorded a verdict (idempotent decisions). */

@@ -80,7 +80,17 @@ public record GovernanceProperties(
       @DefaultValue("PT15M") Duration authorizationValidity,
       @DefaultValue("PT72H") Duration defaultApprovalTtl,
       @DefaultValue("3") int maxEvaluationAttempts,
-      @DefaultValue("30s") Duration evaluationRetryBackoff) {}
+      @DefaultValue("30s") Duration evaluationRetryBackoff,
+      /**
+       * Which implementation owns new approvals (ADR 0011). {@code flowable}: the embedded engine (human tasks,
+       * deadlines, quorum, cancellation, history). {@code shadow}: the legacy code stays authoritative and every approval
+       * is mirrored into a process instance whose outcome is compared and recorded, never released. {@code legacy}: no
+       * process instance is started. Approvals already open keep the implementation they were opened with.
+       */
+      @DefaultValue("flowable") Engine engine) {
+
+    public enum Engine { LEGACY, SHADOW, FLOWABLE }
+  }
 
   public record Outbox(
       @DefaultValue("500ms") Duration pollInterval,

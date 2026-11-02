@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Stage 2 approval (ADR 0011): OPA returned REQUIRE_APPROVAL for the plan the Orchestrator proposed. The plan reference
+  (planId, planDigest, decisionId) is bound first and checked again at release; the shared sub-process collects the
+  verdicts under the same timer and cancellation boundaries as stage 1. On APPROVED the plan is revalidated (still the
+  request's plan, still fresh against the latest confirmed state version, team quota lock, OPA re-evaluation) and the
+  gateway branches on that result: AUTHORIZE_PLAN, or REJECT_PLAN with POLICY_DENIED or STALE_PLAN. A human REJECT,
+  the deadline and a cancellation all end with REJECT_PLAN through the transactional outbox, as before the migration.
+-->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://itland.com/governance/approvals">
+
+  <message id="approvalCancelled" name="approvalCancelled"/>
+
+  <process id="governance-action-plan-approval" name="Action plan approval (stage 2)" isExecutable="true">
+    <documentation>v1: bind plan, decide, revalidate, AUTHORIZE_PLAN or REJECT_PLAN; timer and cancellation boundaries.</documentation>
+
+    <startEvent id="start"/>
+    <sequenceFlow id="toBindPlan" sourceRef="start" targetRef="bindPlan"/>
+
+    <serviceTask id="bindPlan" name="Bind plan reference" flowable:delegateExpression="${bindPlanDelegate}"/>
+    <sequenceFlow id="toDecide" sourceRef="bindPlan" targetRef="decide"/>
+
+    <callActivity id="decide" name="Collect verdicts" calledElement="governance-approval-decision"
+                  flowable:inheritBusinessKey="true" flowable:inheritVariables="false">
+      <extensionElements>
+        <flowable:in source="approvalId" target="approvalId"/>
+        <flowable:in source="requestId" target="requestId"/>
+        <flowable:in source="approverRoles" target="approverRoles"/>
+        <flowable:in source="requiredApprovals" target="requiredApprovals"/>
+        <flowable:in source="approvalDeadline" target="approvalDeadline"/>
+        <flowable:in source="requesterId" target="requesterId"/>
+        <flowable:in source="separationOfDuties" target="separationOfDuties"/>
+        <flowable:in source="approvedCount" target="approvedCount"/>
+        <flowable:out source="approvalOutcome" target="approvalOutcome"/>
+        <flowable:out source="verdict" target="verdict"/>
+        <flowable:out source="approverId" target="approverId"/>
+        <flowable:out source="decisionComment" target="decisionComment"/>
+      </extensionElements>
+    </callActivity>
+
+    <boundaryEvent id="deadline" name="deadline" attachedToRef="decide" cancelActivity="true">
+      <timerEventDefinition>
+        <timeDate>${approvalDeadline}</timeDate>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <sequenceFlow id="toExpire" sourceRef="deadline" targetRef="expire"/>
+
+    <boundaryEvent id="cancelled" name="request ended" attachedToRef="decide" cancelActivity="true">
+      <messageEventDefinition messageRef="approvalCancelled"/>
+    </boundaryEvent>
+    <sequenceFlow id="toCancel" sourceRef="cancelled" targetRef="cancel"/>
+
+    <sequenceFlow id="toOutcome" sourceRef="decide" targetRef="outcome"/>
+    <exclusiveGateway id="outcome" name="Human outcome"/>
+    <sequenceFlow id="approved" name="APPROVED" sourceRef="outcome" targetRef="revalidatePlan">
+      <conditionExpression xsi:type="tFormalExpression">${approvalOutcome == 'APPROVED'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="rejected" name="REJECTED" sourceRef="outcome" targetRef="rejectAfterVerdict">
+      <conditionExpression xsi:type="tFormalExpression">${approvalOutcome == 'REJECTED'}</conditionExpression>
+    </sequenceFlow>
+
+    <serviceTask id="revalidatePlan" name="Revalidate plan with OPA" flowable:delegateExpression="${revalidatePlanDelegate}"/>
+    <sequenceFlow id="toRevalidation" sourceRef="revalidatePlan" targetRef="revalidation"/>
+
+    <exclusiveGateway id="revalidation" name="Policy result" default="shadowOnly"/>
+    <sequenceFlow id="allowed" name="ALLOW" sourceRef="revalidation" targetRef="authorizePlan">
+      <conditionExpression xsi:type="tFormalExpression">${revalidationResult == 'ALLOW'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="denied" name="DENY" sourceRef="revalidation" targetRef="rejectAfterDeny">
+      <conditionExpression xsi:type="tFormalExpression">${revalidationResult == 'DENY'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="stale" name="STALE" sourceRef="revalidation" targetRef="rejectStale">
+      <conditionExpression xsi:type="tFormalExpression">${revalidationResult == 'STALE'}</conditionExpression>
+    </sequenceFlow>
+    <!-- Shadow mode (legacy authoritative): nothing is released or published by this process. -->
+    <sequenceFlow id="shadowOnly" name="shadow" sourceRef="revalidation" targetRef="end"/>
+
+    <serviceTask id="authorizePlan" name="Publish AUTHORIZE_PLAN" flowable:delegateExpression="${authorizePlanDelegate}"/>
+    <sequenceFlow id="authorized" sourceRef="authorizePlan" targetRef="end"/>
+
+    <serviceTask id="rejectAfterDeny" name="Publish REJECT_PLAN (policy denied)" flowable:delegateExpression="${rejectApprovalDelegate}"/>
+    <sequenceFlow id="deniedDone" sourceRef="rejectAfterDeny" targetRef="end"/>
+
+    <serviceTask id="rejectStale" name="Publish REJECT_PLAN (stale plan)" flowable:delegateExpression="${rejectApprovalDelegate}"/>
+    <sequenceFlow id="staleDone" sourceRef="rejectStale" targetRef="end"/>
+
+    <serviceTask id="rejectAfterVerdict" name="Publish REJECT_PLAN (rejected)" flowable:delegateExpression="${rejectApprovalDelegate}"/>
+    <sequenceFlow id="rejectedDone" sourceRef="rejectAfterVerdict" targetRef="end"/>
+
+    <serviceTask id="expire" name="Expire approval (REJECT_PLAN)" flowable:delegateExpression="${expireApprovalDelegate}"/>
+    <sequenceFlow id="expired" sourceRef="expire" targetRef="end"/>
+
+    <serviceTask id="cancel" name="Cancel approval" flowable:delegateExpression="${cancelApprovalDelegate}"/>
+    <sequenceFlow id="cancelledDone" sourceRef="cancel" targetRef="end"/>
+
+    <endEvent id="end"/>
+  </process>
+</definitions>

@@ -10,6 +10,15 @@ governance:
 server:
   shutdown: graceful
 
+# Workflow engine jobs (approval deadlines) across replicas: take turns acquiring instead of contending, and hand
+# acquired jobs back when a pod is replaced (ADR 0011).
+flowable:
+  process:
+    async:
+      executor:
+        global-acquire-lock-enabled: true
+        unlock-owned-jobs: true
+
 spring:
   lifecycle:
     timeout-per-shutdown-phase: 25s

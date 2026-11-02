@@ -20,6 +20,10 @@ public class GovernanceMetrics {
   private final AtomicLong deadLetters = new AtomicLong();
   private final AtomicLong policyRevisionMatch = new AtomicLong(-1);
   private final AtomicLong reservationsOpen = new AtomicLong();
+  private final AtomicLong legacyApprovalsPending = new AtomicLong();
+  private final AtomicLong workflowInstancesActive = new AtomicLong();
+  private final AtomicLong workflowTimersPending = new AtomicLong();
+  private final AtomicLong workflowDeadLetterJobs = new AtomicLong();
 
   public GovernanceMetrics(MeterRegistry registry) {
     this.registry = registry;
@@ -32,7 +36,31 @@ public class GovernanceMetrics {
         .description("1 when OPA runs the active bundle revision, 0 when it differs, -1 when unknown").register(registry);
     Gauge.builder("governance.quota.reservations.open", reservationsOpen, AtomicLong::get)
         .description("Quota reservations held by authorised plans that have not completed yet").register(registry);
+    Gauge.builder("governance.approvals.legacy_pending", legacyApprovalsPending, AtomicLong::get)
+        .description("Pending approvals still owned by the legacy implementation; the cleanup gate of the Flowable migration").register(registry);
+    Gauge.builder("governance.workflow.instances.active", workflowInstancesActive, AtomicLong::get)
+        .description("Running approval process instances").register(registry);
+    Gauge.builder("governance.workflow.timers.pending", workflowTimersPending, AtomicLong::get)
+        .description("Approval deadline timers waiting in the engine").register(registry);
+    Gauge.builder("governance.workflow.jobs.deadletter", workflowDeadLetterJobs, AtomicLong::get)
+        .description("Engine jobs that exhausted their retries (an approval deadline that could not be applied); alert on > 0").register(registry);
   }
+
+  /** governance_approvals_resolved_total{stage,status,engine}: every approval outcome, by the implementation that produced it. */
+  public void recordApprovalResolved(String stage, String status, String engine) {
+    Counter.builder("governance.approvals.resolved").tag("stage", stage).tag("status", status).tag("engine", engine).register(registry).increment();
+  }
+
+  /** governance_workflow_shadow_outcomes_total{stage,outcome,match}: shadow-mode comparison of the engine outcome with the legacy status. */
+  public void recordShadowOutcome(String stage, String outcome, boolean match) {
+    Counter.builder("governance.workflow.shadow.outcomes").tag("stage", stage == null ? "" : stage).tag("outcome", outcome)
+        .tag("match", Boolean.toString(match)).register(registry).increment();
+  }
+
+  public void legacyApprovalsPending(long v) { legacyApprovalsPending.set(v); }
+  public void workflowInstancesActive(long v) { workflowInstancesActive.set(v); }
+  public void workflowTimersPending(long v) { workflowTimersPending.set(v); }
+  public void workflowDeadLetterJobs(long v) { workflowDeadLetterJobs.set(v); }
 
   /** governance_shadow_findings_total{policyId,kind}: findings of policies in shadow mode (recorded, never blocking). */
   public void recordShadowFinding(String policyId, String kind) {

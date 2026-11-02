@@ -126,6 +126,7 @@ services:
       GOVERNANCE_DB_URL: jdbc:postgresql://postgres:5432/governance
       GOVERNANCE_DB_USER: governance
       GOVERNANCE_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      GOVERNANCE_WORKFLOW_ENGINE: ${GOVERNANCE_WORKFLOW_ENGINE:-flowable}   # approval engine (ADR 0011): flowable | shadow | legacy
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
       KAFKA_SASL_MECHANISM: PLAIN

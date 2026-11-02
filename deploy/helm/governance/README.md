@@ -44,6 +44,13 @@ retires the old one when no release file references it (`docs/runbook.md`, "Sign
 `ci/render-check-public-key.pem` is a throwaway public key used only by the render check; it signs nothing.
 `ci/release-rotation.json` is the render check's fixture for a release whose bundles were signed under two key ids.
 
+## Approval workflow engine (ADR 0011)
+Governance embeds the Flowable process engine for human approvals; it needs nothing from the chart beyond the
+database (the engine creates its `ACT_*` tables itself) and memory (`governance.resources`, 1Gi request). The engine
+mode is a Spring property rendered through `governance.config` (`governance.workflow.engine`: `flowable`, `shadow`
+or `legacy`); every environment file sets it explicitly so a rollout is a reviewed values change. The `openshift`
+profile already configures job acquisition across replicas and graceful hand-back on shutdown.
+
 ## Operations
 - Promotion: Workflow C opens a PR that replaces `releases/<env>.json`; merging triggers `deploy.yml`, which rolls the
   pods; Workflow D verifies every pod reports the release id (`GET /api/v1/admin/policy-releases/current`).

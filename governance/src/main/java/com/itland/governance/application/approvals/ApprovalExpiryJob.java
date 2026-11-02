@@ -1,47 +1,35 @@
 package com.itland.governance.application.approvals;
 
-import com.itland.governance.application.audit.AuditService;
-import com.itland.governance.application.usage.QuotaReservationService;
+import com.itland.governance.application.approvals.workflow.ApprovalReleaseSteps;
 import com.itland.governance.configuration.Blocking;
 import com.itland.governance.domain.approval.ApprovalRequest;
 import com.itland.governance.domain.approval.ApprovalStatus;
-import com.itland.governance.domain.decision.GovernanceStage;
 import com.itland.governance.domain.request.ManifestRequest;
-import com.itland.governance.domain.request.RequestLifecycle;
-import com.itland.governance.domain.request.RequestStatus;
-import com.itland.governance.infrastructure.kafka.ManifestCommandPublisher;
 import com.itland.governance.infrastructure.persistence.ApprovalRepository;
 import com.itland.governance.infrastructure.persistence.ManifestRequestRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.util.List;
-import java.util.Map;
 
-/** Expires stale approvals and tells the Orchestrator to drop plans nobody approved in time. */
+/**
+ * TTL sweep for approvals with {@code engine = LEGACY} only (the query excludes Flowable rows, whose deadline is a
+ * boundary timer). Kept until the legacy approvals have drained, then removed (ADR 0011).
+ */
 @Component
 public class ApprovalExpiryJob {
 
-  private static final Logger log = LoggerFactory.getLogger(ApprovalExpiryJob.class);
-
   private final ApprovalRepository approvals;
   private final ManifestRequestRepository requests;
-  private final ManifestCommandPublisher publisher;
-  private final QuotaReservationService reservations;
-  private final AuditService audit;
+  private final ApprovalReleaseSteps steps;
   private final Blocking blocking;
   private final Clock clock;
 
-  public ApprovalExpiryJob(ApprovalRepository approvals, ManifestRequestRepository requests, ManifestCommandPublisher publisher,
-                           QuotaReservationService reservations, AuditService audit, Blocking blocking, Clock clock) {
+  public ApprovalExpiryJob(ApprovalRepository approvals, ManifestRequestRepository requests, ApprovalReleaseSteps steps, Blocking blocking, Clock clock) {
     this.approvals = approvals;
     this.requests = requests;
-    this.publisher = publisher;
-    this.reservations = reservations;
-    this.audit = audit;
+    this.steps = steps;
     this.blocking = blocking;
     this.clock = clock;
   }
@@ -58,15 +46,8 @@ public class ApprovalExpiryJob {
     if (!approvals.resolve(a.id(), a.version(), ApprovalStatus.EXPIRED, "Expired at " + a.expiresAt(), clock.instant())) {
       return; // resolved concurrently
     }
+    ApprovalRequest expired = approvals.findById(a.id()).orElseThrow();
     ManifestRequest request = requests.findById(a.requestId()).orElseThrow();
-    if (RequestLifecycle.canTransition(request.status(), RequestStatus.APPROVAL_EXPIRED)) {
-      requests.transition(request.id(), request.version(), request.status(), RequestStatus.APPROVAL_EXPIRED, "Approval " + a.id() + " expired", null, null, null, null, clock.instant());
-      if (a.stage() == GovernanceStage.ACTION_PLAN) {
-        publisher.enqueueReject(request, a.planId(), a.planDigest(), a.decisionId(), "APPROVAL_EXPIRED", List.of());
-      }
-    }
-    reservations.release(request.id(), "APPROVAL_EXPIRED");
-    audit.record("system", "APPROVAL_EXPIRED", "approval_request", a.id(), a.requestId(), Map.of("stage", a.stage().name()));
-    log.info("Approval {} for request {} expired", a.id(), a.requestId());
+    steps.expire(expired, request);
   }
 }

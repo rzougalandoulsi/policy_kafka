@@ -85,6 +85,21 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("POLICY_SOURCE_IS_GIT", e.getMessage()));
   }
 
+  /** Two decisions raced on the same workflow step; the row lock makes this rare, the client simply retries. */
+  @ExceptionHandler(org.flowable.common.engine.api.FlowableOptimisticLockingException.class)
+  public ResponseEntity<ApiError> workflowRace(org.flowable.common.engine.api.FlowableOptimisticLockingException e) {
+    log.warn("Workflow optimistic locking conflict: {}", e.getMessage());
+    return ResponseEntity.status(HttpStatus.CONFLICT).header("Retry-After", "1")
+        .body(ApiError.of("APPROVAL_CONFLICT", "The approval was modified concurrently; retry the decision"));
+  }
+
+  /** The process or task behind an approval is gone (never exposes engine identifiers). */
+  @ExceptionHandler(org.flowable.common.engine.api.FlowableObjectNotFoundException.class)
+  public ResponseEntity<ApiError> workflowMissing(org.flowable.common.engine.api.FlowableObjectNotFoundException e) {
+    log.warn("Workflow object missing: {}", e.getMessage());
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("STATE_CONFLICT", "The approval workflow is not in a state that accepts this decision"));
+  }
+
   @ExceptionHandler(IllegalStateException.class)
   public ResponseEntity<ApiError> conflict(IllegalStateException e) {
     log.warn("State conflict: {}", e.getMessage());

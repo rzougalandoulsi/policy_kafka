@@ -1,6 +1,6 @@
 package com.itland.governance.application.submission;
 
-import com.itland.governance.application.approvals.ApprovalService;
+import com.itland.governance.application.approvals.workflow.ApprovalWorkflowService;
 import com.itland.governance.application.audit.AuditService;
 import com.itland.governance.application.evaluation.PolicyEvaluationService;
 import com.itland.governance.configuration.Blocking;
@@ -45,7 +45,7 @@ public class ManifestSubmissionService {
   private final ManifestRequestRepository requests;
   private final DecisionRepository decisions;
   private final PolicyEvaluationService evaluation;
-  private final ApprovalService approvals;
+  private final ApprovalWorkflowService approvals;
   private final ManifestCommandPublisher publisher;
   private final TeamAuthorization authorization;
   private final AuditService audit;
@@ -53,7 +53,7 @@ public class ManifestSubmissionService {
   private final Clock clock;
 
   public ManifestSubmissionService(ManifestRequestRepository requests, DecisionRepository decisions, PolicyEvaluationService evaluation,
-                                   ApprovalService approvals, ManifestCommandPublisher publisher, TeamAuthorization authorization,
+                                   ApprovalWorkflowService approvals, ManifestCommandPublisher publisher, TeamAuthorization authorization,
                                    AuditService audit, Blocking blocking, Clock clock) {
     this.requests = requests;
     this.decisions = decisions;

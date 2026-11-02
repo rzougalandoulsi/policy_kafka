@@ -5,7 +5,10 @@ step by step, Artifactory layout, re-runs), `deploy/helm/governance/README.md` (
 `docs/adr/0007` to `0010` (why things are the way they are), `docs/admin-ui.md` (console troubleshooting).
 
 ## Health
-- `GET /actuator/health/readiness` (components `db`, `opa`, `policyRelease`); `GET /actuator/health/liveness`.
+- `GET /actuator/health/readiness` (components `db`, `opa`, `policyRelease`, `workflowEngine`); `GET /actuator/health/liveness`.
+- `workflowEngine` is UP when the embedded Flowable engine answers and the three approval process definitions are
+  deployed (details: version per definition, `deadLetterJobs`). Dead-letter jobs do not take the replica out of
+  rotation; they are alerted on (`governance_workflow_jobs_deadletter`) and recovered as described below.
 - `policyRelease` is UP only when OPA runs exactly the expected release (`releaseId`, `match`, `ready`, per-bundle
   expected versus loaded revision in the details). In release mode the expected release is the mounted
   `/etc/governance/release.json`; in local mode it is the ACTIVE set in the database.
@@ -21,6 +24,11 @@ step by step, Artifactory layout, re-runs), `deploy/helm/governance/README.md` (
 | `governance_outbox_pending` / `governance_outbox_failed` | Kafka publishing backlog / permanently failed commands (alert on failed > 0) |
 | `governance_inbox_retry` / `governance_kafka_deadletters_open` | events awaiting retry / dead letters (alert on open > 0) |
 | `governance_approvals_pending` | human backlog |
+| `governance_approvals_legacy_pending` | pending approvals still owned by the legacy implementation (ADR 0011): must be 0 everywhere before the legacy code is removed |
+| `governance_approvals_resolved_total{stage,status,engine}` | approval outcomes by the implementation that produced them |
+| `governance_workflow_instances_active`, `governance_workflow_timers_pending` | running approval processes and their deadline timers |
+| `governance_workflow_jobs_deadletter` | engine jobs that exhausted their retries (a deadline whose effects failed): alert on > 0, see "Approval workflow operations" |
+| `governance_workflow_shadow_outcomes_total{stage,outcome,match}` | shadow mode only: whether the mirrored process agreed with the legacy outcome |
 | `governance_shadow_findings_total{policyId,kind}` | what a shadow-mode policy would have denied / sent to approval; the soak evidence before flipping it to enforce |
 | `governance_usage_snapshots_total{outcome}` / `governance_usage_stale_total` | confirmed-state records consumed from `teams.repo.manifest` / stage 2 evaluations deferred because the snapshot lagged the plan (alert when `stale` keeps rising: the usage consumer is behind or the topic is unreadable) |
 | `governance_quota_reservations_open`, `governance_quota_reservations_total{outcome}` | capacity held by authorised plans still in flight; `EXPIRED` rising means plans are authorised but never reported back |
@@ -43,6 +51,9 @@ step by step, Artifactory layout, re-runs), `deploy/helm/governance/README.md` (
 | `TEAM_QUOTA_EXCEEDED` although the team "has room" | reservations of in-flight plans count; or confirmed usage includes another repository of the team | `GET /api/v1/admin/teams/{id}/usage` (capacity per environment, repositories, open reservations) |
 | 409 `TEAM_CONFIGURATION_EXTERNAL` on a team edit | the team is owned by an external registry | edit the registry, or save with `source=governance` to take ownership (audited) |
 | Dead letters | poison record or handler bug | `GET /api/v1/admin/dead-letters`, fix, `POST /api/v1/admin/dead-letters/{id}/resolve` |
+| 409 `APPROVAL_RULE` "re-evaluation unavailable" on a verdict | OPA could not re-evaluate at release; the verdict was rolled back | fix OPA, the approver retries the same verdict |
+| 409 `STATE_CONFLICT` "has no open verdict task" | the approval's process is not waiting for a verdict (dead-lettered deadline, process ended) | `governance_workflow_jobs_deadletter`, "Approval workflow operations" |
+| Request stuck in `PENDING_APPROVAL_*` past the TTL | the deadline job dead-lettered (OPA or database failure during expiry) | move the dead-letter job back, see "Approval workflow operations" |
 | Bundle `FAILED` (local mode) | OPA could not load it; previous version restored automatically by `verifyActivation` | fix the bundle, upload a new revision. Release mode has no automatic rollback: see "A promotion that never becomes ready" |
 
 ## Policy rollout
@@ -201,6 +212,49 @@ six bundles move together; "domain bundles first" is not an option here. Order:
    Governance release. While the two code bases share one repository, `policies/scripts/check-contract-sync.sh` keeps
    the two schema copies identical; after the extraction Governance pins a published contracts version
    (`policies/docs/contract.md`).
+
+## Approval workflow operations (ADR 0011)
+Approvals run on the embedded Flowable engine: definitions under `governance/src/main/resources/processes/`, state
+in the `ACT_*` tables of the governance database, deadlines as engine timer jobs, `approval_request` as the public
+record (`engine`, `processInstanceId`).
+
+- **Engine mode**: `governance.workflow.engine` (`GOVERNANCE_WORKFLOW_ENGINE`, Helm `governance.config`), one of
+  `flowable` (default), `shadow` (legacy authoritative, process mirrored and compared, nothing released by the
+  engine) and `legacy`. Only *new* approvals follow the flag; every row keeps the implementation it was opened with.
+  Rollout per environment: `shadow` until `governance_workflow_shadow_outcomes_total{match="false"}` stays flat
+  (timer mismatches against a still pending legacy row are expected: the legacy sweep runs later), then `flowable`.
+- **Drain gate**: `governance_approvals_legacy_pending` (or
+  `SELECT count(*) FROM approval_request WHERE engine = 'LEGACY' AND status = 'PENDING'`) must be 0 in every
+  environment before the cleanup release that deletes `ApprovalExpiryJob`, `ApprovalRules.outcome`,
+  `ApprovalReleaseService`, the legacy branch of `ApprovalService` / `ApprovalWorkflowService`, the shadow mode and
+  `ShadowOutcomeRecorder`, the `shadowOnly` sequence flows of the two BPMN files and the quorum unit tests. Legacy rows
+  are decided through the same API and expire through the sweep (`governance.workflow.approval-expiry-interval`) until
+  then; nothing is migrated silently.
+- **Dead-letter job** (`governance_workflow_jobs_deadletter > 0`): a deadline whose effects (request transition,
+  REJECT_PLAN outbox row, reservation release) failed three times. The Orchestrator still holds the plan. Fix the
+  cause (OPA is not involved in expiry; look for database errors in the `gov-workflow-*` thread logs), then move the
+  job back: from a JVM with the engine, `managementService.createDeadLetterJobQuery().list()` and
+  `managementService.moveDeadLetterJobToExecutableJob(jobId, 3)`; or, as a last resort, cancel the approval through
+  the normal path by letting the Orchestrator finish the request. Never edit `ACT_*` rows by hand.
+- **Approval without an open task** (409 on a verdict): the process is not at the verdict task. List
+  `runtimeService.createProcessInstanceQuery().processInstanceBusinessKey(approvalId)` and its jobs; a dead-lettered
+  job is the usual cause (above).
+- **Changing a BPMN file**: keep process ids and variable names stable (variables are append-only), reference only
+  delegate beans that exist in both the old and the new image (ship new beans one release before the BPMN that uses
+  them, remove beans one release after their last reference), never edit the shared sub-process contract (in/out
+  variables) incompatibly: a call activity binds to the latest sub-process version when it is reached. Startup
+  deploys a new version only when the XML changed; running instances finish on their version
+  (`ApprovalWorkflowIT.inFlightInstancesStayOnTheirDefinitionVersionAfterAnUpgrade`). Instances are never migrated
+  automatically; an explicit, reviewed `ProcessInstanceMigrationBuilder` script with a dry run is the only way.
+- **Rollback of the application image** redeploys the previous XML as a *new* version; instances started on the
+  newer version keep running on it, which is why delegate beans may only be removed one release after their last
+  BPMN reference. Historical definitions and deployments are never deleted.
+- **Schema**: the engine creates/upgrades `ACT_*` at startup (locked on every start after the first); Flyway owns
+  the rest. `\dt act_*` and `SELECT * FROM act_ge_property` show the engine schema version. Never add `ACT_*` to
+  Flyway, never create Governance tables through Flowable. History is cleaned nightly after 365 days
+  (`flowable.history-cleaning-after`); `audit_record` is the audit trail and is never cleaned by the engine.
+- **Shutdown**: the executor stops accepting jobs and waits up to 20 s for running ones; in the `openshift` profile
+  acquired jobs are handed back (`unlock-owned-jobs`) and replicas take turns acquiring (`global-acquire-lock-enabled`).
 
 ## Security notes
 - Local stack: OPA has no published port; its bundle endpoint on Governance is guarded by `OPA_BUNDLE_TOKEN` and must stay off the public network.

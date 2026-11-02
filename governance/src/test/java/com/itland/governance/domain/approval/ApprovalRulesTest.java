@@ -1,6 +1,7 @@
 package com.itland.governance.domain.approval;
 
 import com.itland.governance.domain.decision.GovernanceStage;
+import com.itland.governance.domain.approval.ApprovalEngine;
 import com.itland.governance.infrastructure.security.CallerContext;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ class ApprovalRulesTest {
 
   private static ApprovalRequest approval(int required, boolean sod, Instant expires, ApprovalStatus status) {
     return new ApprovalRequest("apr-1", "req-1", GovernanceStage.ACTION_PLAN, "dec-1", "plan-1", "digest", "digest", status, "requester",
-        required, List.of("governance-approver"), sod, List.of(), expires, 0, NOW.minusSeconds(60), null, null);
+        required, List.of("governance-approver"), sod, List.of(), expires, 0, NOW.minusSeconds(60), null, null, ApprovalEngine.FLOWABLE, null);
   }
 
   private static CallerContext caller(String id, String... roles) {

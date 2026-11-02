@@ -18,6 +18,8 @@ governance:
     governance:
       usage:
         require-fresh-snapshot: true
+      workflow:
+        engine: flowable                                             # approval engine (ADR 0011): flowable | shadow | legacy
 route:
   host: governance-dev.apps.example.com                            # [A]
 networkPolicy:

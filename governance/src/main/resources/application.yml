@@ -70,6 +70,10 @@ governance:
     default-approval-ttl: PT72H
     max-evaluation-attempts: 3
     evaluation-retry-backoff: 30s
+    # flowable: new approvals run on the embedded BPMN engine (ADR 0011). shadow: legacy stays authoritative and every
+    # approval is mirrored into a process whose outcome is compared and recorded. legacy: no process instances.
+    # Approvals already open keep the implementation they were opened with (governance_approvals_legacy_pending).
+    engine: ${GOVERNANCE_WORKFLOW_ENGINE:flowable}
   outbox:
     poll-interval: 500ms
     batch-size: 100
@@ -83,6 +87,27 @@ governance:
     require-fresh-snapshot: ${GOVERNANCE_USAGE_REQUIRE_FRESH_SNAPSHOT:true}
     reservation-sweep-interval: 30s
 
+# Embedded Flowable process engine (ADR 0011): only the BPMN engine, on the Governance datasource and transaction
+# manager. It creates and upgrades its own ACT_* tables at startup (Flyway never touches them). Definitions under
+# classpath:/processes are deployed at startup; a new version is created only when the XML changed and running
+# instances stay on the version they started with.
+flowable:
+  deployment-name: governance-approvals
+  database-schema-update: true
+  history-level: audit
+  enable-history-cleaning: true
+  history-cleaning-after: 365d
+  idm:
+    enabled: false                 # approvers come from the JWT and TeamAuthorization, never from engine identity tables
+  eventregistry:
+    enabled: false
+  auto-deployment:
+    use-lock: true                 # pods starting together create one deployment, not one each
+  process:
+    async:
+      executor:
+        default-timer-job-acquire-wait-time: 10s
+
 management:
   endpoints:
     web:
@@ -95,7 +120,7 @@ management:
       show-details: always
       group:
         readiness:
-          include: db,opa,policyRelease,readinessState
+          include: db,opa,policyRelease,workflowEngine,readinessState
 
 springdoc:
   api-docs:
@@ -110,3 +135,6 @@ logging:
   level:
     org.apache.kafka: WARN
     io.confluent: WARN
+    # A rolled-back approval (OPA unavailable, plan swapped) is answered as 409 and logged by the caller; the engine's
+    # own stack trace for the same exception adds nothing.
+    org.flowable.common.engine.impl.interceptor.CommandContext: OFF

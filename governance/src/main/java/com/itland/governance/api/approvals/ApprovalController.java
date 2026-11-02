@@ -2,6 +2,7 @@ package com.itland.governance.api.approvals;
 
 import com.itland.governance.api.Callers;
 import com.itland.governance.application.approvals.ApprovalService;
+import com.itland.governance.application.approvals.workflow.ApprovalWorkflowService;
 import com.itland.governance.domain.approval.ApprovalDecision;
 import com.itland.governance.domain.approval.ApprovalRequest;
 import com.itland.governance.domain.approval.ApprovalStatus;
@@ -25,7 +26,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/approvals")
-@Tag(name = "Approvals", description = "Human approval workflow bound to immutable plan digests")
+@Tag(name = "Approvals", description = "Human approval workflow bound to immutable plan digests (embedded BPMN engine; approval ids are the public contract)")
 public class ApprovalController {
 
   public record DecisionBody(@NotNull ApprovalVerdict verdict, @Size(max = 2000) String comment) {}
@@ -33,10 +34,10 @@ public class ApprovalController {
   public record ApprovalDetail(ApprovalRequest approval, List<ApprovalDecision> decisions, String requestStatus, String teamId,
                                String repositoryId, String environment) {}
 
-  private final ApprovalService approvals;
+  private final ApprovalWorkflowService approvals;
   private final Callers callers;
 
-  public ApprovalController(ApprovalService approvals, Callers callers) {
+  public ApprovalController(ApprovalWorkflowService approvals, Callers callers) {
     this.approvals = approvals;
     this.callers = callers;
   }

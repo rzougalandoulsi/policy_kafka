@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Shared verdict collection (ADR 0011), called by manifest-approval (stage 1) and action-plan-approval (stage 2).
+  One user task is open at any time; Governance completes it after it has authorised the approver (role from the JWT,
+  separation of duties, not already decided) and recorded the verdict in approval_decision. Quorum is the gateway below:
+  any REJECT ends the approval, enough distinct APPROVE verdicts approve it, otherwise the task is created again.
+  No approver identity appears here: candidate groups are the approver roles of the active approval configuration.
+  Contract (stable across versions): in approvalId, requestId, approverRoles, requiredApprovals, approvalDeadline,
+  requesterId, separationOfDuties, approvedCount; set on completion verdict, approverId, approvedCount, decisionComment;
+  out approvalOutcome (APPROVED | REJECTED), verdict, approverId, decisionComment.
+-->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://itland.com/governance/approvals">
+
+  <process id="governance-approval-decision" name="Collect approval verdicts" isExecutable="true">
+    <documentation>v1: user task loop with quorum gateway.</documentation>
+
+    <startEvent id="start"/>
+    <sequenceFlow id="toCollectVerdict" sourceRef="start" targetRef="collectVerdict"/>
+
+    <userTask id="collectVerdict" name="Approve or reject"
+              flowable:candidateGroups="${approverRoles}" flowable:dueDate="${approvalDeadline}">
+      <documentation>Completed by Governance only, after TeamAuthorization and ApprovalRules.eligibility passed.</documentation>
+    </userTask>
+    <sequenceFlow id="toOutcome" sourceRef="collectVerdict" targetRef="outcome"/>
+
+    <exclusiveGateway id="outcome" name="Verdict and quorum" default="quorumPending"/>
+
+    <sequenceFlow id="rejected" name="any REJECT" sourceRef="outcome" targetRef="endRejected">
+      <extensionElements>
+        <flowable:executionListener event="take" expression="${execution.setVariable('approvalOutcome', 'REJECTED')}"/>
+      </extensionElements>
+      <conditionExpression xsi:type="tFormalExpression">${verdict == 'REJECT'}</conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="approved" name="quorum reached" sourceRef="outcome" targetRef="endApproved">
+      <extensionElements>
+        <flowable:executionListener event="take" expression="${execution.setVariable('approvalOutcome', 'APPROVED')}"/>
+      </extensionElements>
+      <conditionExpression xsi:type="tFormalExpression">${verdict == 'APPROVE' &amp;&amp; approvedCount >= requiredApprovals}</conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="quorumPending" name="more verdicts needed" sourceRef="outcome" targetRef="collectVerdict"/>
+
+    <endEvent id="endApproved" name="approved"/>
+    <endEvent id="endRejected" name="rejected"/>
+  </process>
+</definitions>

@@ -24,4 +24,8 @@ public record ApprovalRequest(
     long version,
     Instant createdAt,
     Instant resolvedAt,
-    String resolutionReason) {}
+    String resolutionReason,
+    /** Implementation that resolves this approval (ADR 0011). */
+    ApprovalEngine engine,
+    /** Flowable process instance correlated with this approval (its business key is the approval id); null for pure legacy rows. */
+    String processInstanceId) {}

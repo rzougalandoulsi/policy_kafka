@@ -26,6 +26,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import com.itland.governance.application.approvals.workflow.ApprovalWorkflowService;
+import com.itland.governance.configuration.GovernanceProperties;
+import org.flowable.engine.ManagementService;
+import org.flowable.job.api.Job;
+import org.flowable.spring.SpringProcessEngineConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -85,6 +90,9 @@ class GovernanceEndToEndIT {
   static final String AUDITOR = TestJwt.token("auditor-1", List.of(), List.of(), List.of("governance-auditor"));
 
   @Autowired JdbcClient jdbc;
+  @Autowired ApprovalWorkflowService workflow;
+  @Autowired ManagementService management;
+  @Autowired SpringProcessEngineConfiguration engineConfiguration;
   WebTestClient client;
   Map<String, String> bundleV1Ids = new java.util.TreeMap<>();
 
@@ -396,6 +404,20 @@ class GovernanceEndToEndIT {
     List<Map<String, Object>> audit = client.get().uri("/api/v1/admin/audit?requestId=" + delete).header("Authorization", "Bearer " + AUDITOR).exchange()
         .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
     assertThat(audit).extracting(a -> (String) a.get("action")).contains("APPROVAL_OPENED", "APPROVAL_DECISION", "APPROVAL_RELEASE_STAGE2", "REQUEST_COMPLETED");
+    // Whatever implementation owns the approval, exactly one AUTHORIZE_PLAN left Governance.
+    assertThat(jdbc.sql("SELECT count(*) FROM kafka_outbox WHERE request_id = :r AND headers->>'commandType' = 'AUTHORIZE_PLAN'").param("r", delete).query(Long.class).single()).isEqualTo(1L);
+    Map<String, Object> resolved = client.get().uri("/api/v1/approvals/" + approvalId).header("Authorization", "Bearer " + APPROVER).exchange()
+        .expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
+    Map<String, Object> approvalRow = (Map<String, Object>) resolved.get("approval");
+    switch (workflow.mode()) {
+      case FLOWABLE -> assertThat(approvalRow).containsEntry("engine", "FLOWABLE").hasEntrySatisfying("processInstanceId", v -> assertThat(v).isNotNull());
+      case SHADOW -> {
+        assertThat(approvalRow).containsEntry("engine", "LEGACY").hasEntrySatisfying("processInstanceId", v -> assertThat(v).isNotNull());
+        assertThat(audit).filteredOn(a -> "WORKFLOW_SHADOW_OUTCOME".equals(a.get("action")))
+            .singleElement().satisfies(a -> assertThat((Map<String, Object>) a.get("details")).containsEntry("engineOutcome", "APPROVED").containsEntry("match", true));
+      }
+      case LEGACY -> assertThat(approvalRow).containsEntry("engine", "LEGACY").containsEntry("processInstanceId", null);
+    }
   }
 
   @Test
@@ -527,11 +549,14 @@ class GovernanceEndToEndIT {
   @Test
   @Order(17)
   void observabilityEndpointsExposeTheMetrics() {
-    client.get().uri("/actuator/health/readiness").exchange().expectStatus().isOk().expectBody().jsonPath("$.status").isEqualTo("UP");
+    client.get().uri("/actuator/health/readiness").exchange().expectStatus().isOk().expectBody().jsonPath("$.status").isEqualTo("UP")
+        .jsonPath("$.components.workflowEngine.status").isEqualTo("UP")
+        .jsonPath("$.components.workflowEngine.details.definitions.governance-action-plan-approval").isEqualTo("v1");
     String prometheus = client.get().uri("/actuator/prometheus").exchange().expectStatus().isOk().expectBody(String.class).returnResult().getResponseBody();
     assertThat(prometheus).contains("governance_opa_evaluation_seconds").contains("governance_decisions_total")
         .contains("governance_outbox_pending").contains("governance_approvals_pending").contains("governance_policy_revision_match")
         .contains("governance_usage_snapshots_total").contains("governance_quota_reservations_open")
+        .contains("governance_approvals_legacy_pending").contains("governance_workflow_jobs_deadletter").contains("governance_workflow_instances_active")
         .contains("kafka_consumer_");
   }
 
@@ -710,5 +735,86 @@ class GovernanceEndToEndIT {
     List<Map<String, Object>> audit = client.get().uri("/api/v1/admin/audit?requestId=" + refused).header("Authorization", "Bearer " + AUDITOR).exchange()
         .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
     assertThat(audit).extracting(a2 -> (String) a2.get("action")).contains("APPROVAL_RELEASE_STAGE2");
+  }
+
+  @Test
+  @Order(23)
+  @SuppressWarnings("unchecked")
+  void expiredStage2ApprovalTellsTheOrchestratorToDropThePlan() {
+    configureTeam(List.of("team-a."), Map.of("topicPartitions", 4096), "room for the expiry scenario");
+    String requestId = (String) submitAccepted(DEV, manifest("repo-expiry", "production", List.of(topic("team-a.exp.a", 64), topic("team-a.exp.b", 64)), List.of())).get("requestId");
+    awaitStatus(requestId, "PENDING_APPROVAL_STAGE2");
+    List<Map<String, Object>> pending = client.get().uri("/api/v1/approvals?status=PENDING").header("Authorization", "Bearer " + APPROVER).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    Map<String, Object> approval = pending.stream().filter(a -> requestId.equals(a.get("requestId"))).findFirst().orElseThrow();
+    String approvalId = (String) approval.get("id");
+
+    if (workflow.mode() == GovernanceProperties.Workflow.Engine.FLOWABLE) {
+      // The deadline is the engine's boundary timer: run it now instead of waiting 72 hours.
+      engineConfiguration.getAsyncExecutor().shutdown();
+      try {
+        Job timer = management.createTimerJobQuery().processInstanceId((String) approval.get("processInstanceId")).singleResult();
+        management.moveTimerToExecutableJob(timer.getId());
+        management.executeJob(timer.getId());
+      } finally {
+        engineConfiguration.getAsyncExecutor().start();
+      }
+    } else {
+      // Legacy rows expire through the sweep (5 s in this suite) once their TTL has passed.
+      jdbc.sql("UPDATE approval_request SET expires_at = now() - interval '1 minute' WHERE id = :id").param("id", approvalId).update();
+    }
+    awaitStatus(requestId, "APPROVAL_EXPIRED");
+    client.get().uri("/api/v1/approvals/" + approvalId).header("Authorization", "Bearer " + APPROVER).exchange().expectStatus().isOk()
+        .expectBody().jsonPath("$.approval.status").isEqualTo("EXPIRED");
+    // REJECT_PLAN APPROVAL_EXPIRED left through the outbox and reached the Orchestrator stand-in, which dropped the plan.
+    await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> assertThat(
+        jdbc.sql("SELECT status FROM kafka_outbox WHERE request_id = :r AND headers->>'commandType' = 'REJECT_PLAN'").param("r", requestId).query(String.class).list())
+        .containsExactly("SENT"));
+    assertThat(jdbc.sql("SELECT payload->'payload'->>'com.itland.platform.avro.RejectPlanPayload' FROM kafka_outbox WHERE request_id = :r AND headers->>'commandType' = 'REJECT_PLAN'")
+        .param("r", requestId).query(String.class).single()).contains("APPROVAL_EXPIRED");
+    assertThat((List<?>) teamUsage().get("reservations")).noneMatch(r -> requestId.equals(((Map<String, Object>) r).get("requestId")));
+    List<Map<String, Object>> audit = client.get().uri("/api/v1/admin/audit?requestId=" + requestId).header("Authorization", "Bearer " + AUDITOR).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    assertThat(audit).extracting(a -> (String) a.get("action")).contains("APPROVAL_EXPIRED");
+    // A late verdict is refused.
+    client.post().uri("/api/v1/approvals/" + approvalId + "/decisions").header("Authorization", "Bearer " + APPROVER).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("verdict", "APPROVE")).exchange().expectStatus().isEqualTo(HttpStatus.CONFLICT).expectBody().jsonPath("$.code").isEqualTo("APPROVAL_RULE");
+  }
+
+  @Test
+  @Order(24)
+  @SuppressWarnings("unchecked")
+  void replayedPlanProposedWhileAnApprovalIsPendingOpensNoSecondApproval() throws Exception {
+    String requestId = (String) submitAccepted(DEV, manifest("repo-replay", "production", List.of(topic("team-a.rp.a", 64), topic("team-a.rp.b", 64)), List.of())).get("requestId");
+    Map<String, Object> pending = awaitStatus(requestId, "PENDING_APPROVAL_STAGE2");
+
+    Map<String, Object> props = Map.of(
+        ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, PlatformContainers.KAFKA.getBootstrapServers(),
+        ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName(),
+        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName(),
+        AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, PlatformContainers.schemaRegistryUrl(),
+        AbstractKafkaSchemaSerDeConfig.VALUE_SUBJECT_NAME_STRATEGY, RecordNameStrategy.class.getName());
+    String replayId = "replay-pending-" + UUID.randomUUID();
+    try (KafkaProducer<String, Object> p = new KafkaProducer<>(props)) {
+      // Same plan, new event id: the inbox cannot deduplicate it, the lifecycle guard must.
+      ManifestEvent again = ManifestEvent.newBuilder().setEventId(replayId).setEventType(ManifestEventType.PLAN_PROPOSED)
+          .setRequestId(requestId).setTeamId("team-a").setRepositoryId("repo-replay").setEnvironment("production")
+          .setPlanId((String) pending.get("planId")).setPlanDigest((String) pending.get("planDigest"))
+          .setStateVersion(((Number) pending.getOrDefault("stateVersion", 0)).longValue()).setOccurredAt(Instant.now())
+          .setPayload(PlanProposedPayload.newBuilder().setActions(List.of()).setManifestDigest((String) pending.get("manifestDigest")).build()).build();
+      p.send(new ProducerRecord<>("response.manifest", "team-a", again)).get();
+    }
+    await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> assertThat(
+        jdbc.sql("SELECT status FROM kafka_inbox WHERE event_id = :e").param("e", replayId).query(String.class).optional()).contains("IGNORED"));
+    assertThat(jdbc.sql("SELECT count(*) FROM approval_request WHERE request_id = :r").param("r", requestId).query(Long.class).single()).isEqualTo(1L);
+    assertThat(request(DEV, requestId)).containsEntry("status", "PENDING_APPROVAL_STAGE2");
+
+    List<Map<String, Object>> approvals = client.get().uri("/api/v1/approvals?status=PENDING").header("Authorization", "Bearer " + APPROVER).exchange()
+        .expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    String approvalId = (String) approvals.stream().filter(a -> requestId.equals(a.get("requestId"))).findFirst().orElseThrow().get("id");
+    client.post().uri("/api/v1/approvals/" + approvalId + "/decisions").header("Authorization", "Bearer " + APPROVER).contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(Map.of("verdict", "APPROVE", "comment", "after replay")).exchange().expectStatus().isOk()
+        .expectBody().jsonPath("$.requestStatus").isEqualTo("PLAN_AUTHORIZED");
+    awaitStatus(requestId, "COMPLETED");
   }
 }

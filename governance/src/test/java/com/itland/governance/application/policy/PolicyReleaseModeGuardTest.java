@@ -39,7 +39,7 @@ class PolicyReleaseModeGuardTest {
   }
 
   static GovernanceProperties properties(GovernanceProperties.Opa opa) {
-    return new GovernanceProperties(null, opa, null, new GovernanceProperties.Workflow(Duration.ofMinutes(15), Duration.ofHours(72), 3, Duration.ofSeconds(30)),
+    return new GovernanceProperties(null, opa, null, new GovernanceProperties.Workflow(Duration.ofMinutes(15), Duration.ofHours(72), 3, Duration.ofSeconds(30), GovernanceProperties.Workflow.Engine.FLOWABLE),
         new GovernanceProperties.Outbox(Duration.ofMillis(500), 100, 10, Duration.ofSeconds(2)), new GovernanceProperties.Inbox(200, Duration.ofSeconds(5)),
         new GovernanceProperties.Usage(true));
   }

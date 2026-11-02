@@ -8,11 +8,8 @@ import com.itland.governance.domain.approval.ApprovalRequest;
 import com.itland.governance.domain.approval.ApprovalRules;
 import com.itland.governance.domain.approval.ApprovalStatus;
 import com.itland.governance.domain.approval.ApprovalVerdict;
-import com.itland.governance.domain.decision.ApprovalRequirement;
-import com.itland.governance.domain.decision.GovernanceDecision;
-import com.itland.governance.domain.decision.GovernanceStage;
-import com.itland.governance.domain.policy.ApprovalConfiguration;
 import com.itland.governance.domain.request.ManifestRequest;
+import com.itland.governance.infrastructure.observability.GovernanceMetrics;
 import com.itland.governance.infrastructure.persistence.ApprovalRepository;
 import com.itland.governance.infrastructure.persistence.ManifestRequestRepository;
 import com.itland.governance.infrastructure.security.AccessDeniedException;
@@ -24,16 +21,14 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 /**
- * Durable human approvals bound to an immutable digest (manifest digest for stage 1, plan digest for stage 2).
- * Decisions are idempotent per approver, protected by a row lock, and audited. Nothing here waits on a Kafka thread.
+ * Read side of approvals (list, get, team authorisation) plus the retained legacy resolution (quorum computed in
+ * Java, release through {@link ApprovalReleaseService}) for approvals opened with {@code engine = LEGACY}. New
+ * approvals are opened and decided by {@code ApprovalWorkflowService} on the embedded Flowable engine (ADR 0011); the
+ * legacy branch is deleted once {@code governance_approvals_legacy_pending} has reached zero everywhere.
  */
 @Service
 public class ApprovalService {
@@ -51,32 +46,20 @@ public class ApprovalService {
   private final ApprovalReleaseService release;
   private final TeamAuthorization authorization;
   private final AuditService audit;
+  private final GovernanceMetrics metrics;
   private final Blocking blocking;
   private final Clock clock;
 
   public ApprovalService(ApprovalRepository approvals, ManifestRequestRepository requests, ApprovalReleaseService release,
-                         TeamAuthorization authorization, AuditService audit, Blocking blocking, Clock clock) {
+                         TeamAuthorization authorization, AuditService audit, GovernanceMetrics metrics, Blocking blocking, Clock clock) {
     this.approvals = approvals;
     this.requests = requests;
     this.release = release;
     this.authorization = authorization;
     this.audit = audit;
+    this.metrics = metrics;
     this.blocking = blocking;
     this.clock = clock;
-  }
-
-  /** Opens a PENDING approval inside the caller's transaction. */
-  public ApprovalRequest open(ManifestRequest request, GovernanceDecision decision, GovernanceStage stage, List<ApprovalRequirement> requirements,
-                              String digest, String planId, String planDigest) {
-    ApprovalConfiguration config = approvals.findActiveConfiguration().orElseThrow(() -> new IllegalStateException("No ACTIVE approval configuration"));
-    Instant now = clock.instant();
-    ApprovalRequest approval = new ApprovalRequest("apr-" + UUID.randomUUID(), request.id(), stage, decision.id(), planId, planDigest, digest,
-        ApprovalStatus.PENDING, request.principalId(), config.requiredApprovals(), config.approverRoles(), config.separationOfDuties(),
-        requirements, now.plus(Duration.ofHours(config.ttlHours())), 0, now, null, null);
-    approvals.insert(approval);
-    audit.record("system", "APPROVAL_OPENED", "approval_request", approval.id(), request.id(),
-        Map.of("stage", stage.name(), "decisionId", decision.id(), "requiredApprovals", config.requiredApprovals(), "expiresAt", approval.expiresAt().toString()));
-    return approval;
   }
 
   public Mono<List<ApprovalRequest>> list(CallerContext caller, ApprovalStatus status, String teamId, int limit) {
@@ -100,53 +83,35 @@ public class ApprovalService {
     });
   }
 
-  /** Records a verdict; when quorum is reached the plan/manifest is revalidated and released, when rejected the request ends. */
-  public Mono<Detail> decide(CallerContext approver, String approvalId, ApprovalVerdict verdict, String comment) {
-    authorization.requireApprover(approver);
-    return blocking.inTransaction(() -> {
-      ApprovalRequest approval = approvals.lockById(approvalId).orElseThrow(() -> new NotFoundException("Approval " + approvalId + " not found"));
-      ManifestRequest request = requests.findById(approval.requestId()).orElseThrow();
-      Instant now = clock.instant();
-      List<ApprovalDecision> existing = approvals.decisions(approvalId);
-
-      Optional<ApprovalDecision> mine = existing.stream().filter(d -> d.approverId().equals(approver.principalId())).findFirst();
-      if (mine.isPresent()) {
-        if (mine.get().verdict() != verdict) {
-          throw new ApprovalRuleException("You already recorded " + mine.get().verdict() + " on this approval");
-        }
-        return new Detail(approval, existing, request); // idempotent replay
-      }
-      ApprovalRules.eligibility(approval, approver, existing, now).ifPresent(reason -> { throw new ApprovalRuleException(reason); });
-
-      ApprovalDecision decision = new ApprovalDecision("apd-" + UUID.randomUUID(), approvalId, approver.principalId(), verdict, comment, now);
-      approvals.insertDecision(decision);
-      List<ApprovalDecision> all = approvals.decisions(approvalId);
-      audit.record(approver.principalId(), "APPROVAL_DECISION", "approval_request", approvalId, request.id(),
-          Map.of("verdict", verdict.name(), "comment", comment == null ? "" : comment));
-
-      ApprovalStatus outcome = ApprovalRules.outcome(approval, all);
-      if (outcome == ApprovalStatus.PENDING) {
-        return new Detail(approval, all, request);
-      }
-      if (!approvals.resolve(approvalId, approval.version(), outcome, verdict == ApprovalVerdict.REJECT ? "Rejected by " + approver.principalId() : "Quorum reached", now)) {
-        throw new IllegalStateException("Concurrent modification of approval " + approvalId);
-      }
-      if (outcome == ApprovalStatus.REJECTED) {
-        release.rejectAfterApproval(approval, request, approver.principalId(), comment);
-      } else {
-        release.releaseAfterApproval(approval, request, approver.principalId());
-      }
-      log.info("Approval {} for request {} resolved as {}", approvalId, request.id(), outcome);
-      return new Detail(approvals.findById(approvalId).orElseThrow(), all, requests.findById(request.id()).orElseThrow());
-    });
+  /**
+   * Legacy resolution after a verdict was recorded (row lock held by the caller): quorum in Java, then release or
+   * rejection. Only reached for approvals with {@code engine = LEGACY}.
+   */
+  public Detail resolve(ApprovalRequest approval, ManifestRequest request, List<ApprovalDecision> all, CallerContext approver,
+                        ApprovalVerdict verdict, String comment) {
+    ApprovalStatus outcome = ApprovalRules.outcome(approval, all);
+    if (outcome == ApprovalStatus.PENDING) {
+      return new Detail(approval, all, request);
+    }
+    if (!approvals.resolve(approval.id(), approval.version(), outcome, verdict == ApprovalVerdict.REJECT ? "Rejected by " + approver.principalId() : "Quorum reached", clock.instant())) {
+      throw new IllegalStateException("Concurrent modification of approval " + approval.id());
+    }
+    metrics.recordApprovalResolved(approval.stage().name(), outcome.name(), approval.engine().name());
+    ApprovalRequest resolved = approvals.findById(approval.id()).orElseThrow();
+    if (outcome == ApprovalStatus.REJECTED) {
+      release.rejectAfterApproval(resolved, request, approver.principalId(), comment);
+    } else {
+      release.releaseAfterApproval(resolved, request, approver.principalId());
+    }
+    log.info("Approval {} for request {} resolved as {}", approval.id(), request.id(), outcome);
+    return new Detail(approvals.findById(approval.id()).orElseThrow(), all, requests.findById(request.id()).orElseThrow());
   }
 
-  /** Cancels pending approvals when the request ends by other means (orchestrator rejection, completion). Caller's transaction. */
-  public void cancelPending(String requestId, String reason) {
-    for (ApprovalRequest a : approvals.findPendingByRequest(requestId)) {
-      if (approvals.resolve(a.id(), a.version(), ApprovalStatus.CANCELLED, reason, clock.instant())) {
-        audit.record("system", "APPROVAL_CANCELLED", "approval_request", a.id(), requestId, Map.of("reason", reason));
-      }
+  /** Cancels one pending approval without touching any process instance. Caller's transaction. */
+  public void cancelOne(ApprovalRequest a, String reason) {
+    if (approvals.resolve(a.id(), a.version(), ApprovalStatus.CANCELLED, reason, clock.instant())) {
+      metrics.recordApprovalResolved(a.stage().name(), ApprovalStatus.CANCELLED.name(), a.engine().name());
+      audit.record("system", "APPROVAL_CANCELLED", "approval_request", a.id(), a.requestId(), Map.of("reason", reason));
     }
   }
 }

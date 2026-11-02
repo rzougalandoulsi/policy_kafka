@@ -1,6 +1,6 @@
 package com.itland.governance.application.lifecycle;
 
-import com.itland.governance.application.approvals.ApprovalService;
+import com.itland.governance.application.approvals.workflow.ApprovalWorkflowService;
 import com.itland.governance.application.audit.AuditService;
 import com.itland.governance.application.evaluation.PolicyEvaluationService;
 import com.itland.governance.application.usage.QuotaReservationService;
@@ -60,7 +60,7 @@ public class ManifestEventHandler {
   private final ProposedPlanRepository plans;
   private final DecisionRepository decisions;
   private final PolicyEvaluationService evaluation;
-  private final ApprovalService approvals;
+  private final ApprovalWorkflowService approvals;
   private final ManifestCommandPublisher publisher;
   private final QuotaReservationService reservations;
   private final RepositoryUsageRepository usage;
@@ -68,7 +68,7 @@ public class ManifestEventHandler {
   private final Clock clock;
 
   public ManifestEventHandler(ManifestRequestRepository requests, ProposedPlanRepository plans, DecisionRepository decisions,
-                              PolicyEvaluationService evaluation, ApprovalService approvals, ManifestCommandPublisher publisher,
+                              PolicyEvaluationService evaluation, ApprovalWorkflowService approvals, ManifestCommandPublisher publisher,
                               QuotaReservationService reservations, RepositoryUsageRepository usage, AuditService audit, Clock clock) {
     this.requests = requests;
     this.plans = plans;
@@ -193,7 +193,7 @@ public class ManifestEventHandler {
       return Outcome.ignored("PLAN_MISMATCH");
     }
     transition(request, target, reason, event.getEventId(), null, null, event.getStateVersion());
-    approvals.cancelPending(request.id(), "Request ended: " + target);
+    approvals.cancel(request.id(), "Request ended: " + target);
     reservations.release(request.id(), target.name());
     if (target == RequestStatus.COMPLETED || target == RequestStatus.FAILED) {
       // The confirmed state (teams.repo.manifest) carries topic names only; remember the partitions this manifest declared.
