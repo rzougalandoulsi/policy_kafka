@@ -17,6 +17,8 @@
     - REST endpoints and status codes ....... docs/governance.md
     - services and ports (component map) .... deploy/docker-compose.yml
     - tables (component map) ................ governance/src/main/resources/db/migration/
+    - release mode (component map) .......... deploy/helm/governance/templates/_helpers.tpl, deploy/helm/governance/releases/,
+                                               policies/.github/workflows/ (Workflows A to E), docs/adr/0008
     - proxy and sign-in wiring .............. docs/admin-ui.md
   GitHub shows this file as source. Open it from a checkout (file://) or any static server.
 -->
@@ -24,7 +26,7 @@
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6676; --line: #d9dee6; --rail: #c5ccd6;
     --accent: #2457d6; --http: #2457d6; --cmd: #c2620a; --evt: #7a3fb3; --opa: #0f8a5f; --other: #6b7482; --internal: #3b4452;
-    --ok: #0f8a5f; --deny: #c92a2a; --error: #b45309; --approval: #8a5a00; --bundle: #0b7285;
+    --ok: #0f8a5f; --deny: #c92a2a; --error: #b45309; --approval: #8a5a00; --bundle: #0b7285; --release: #b4466e;
     --ok-bg: #e5f6ee; --deny-bg: #fbe7e7; --error-bg: #fdf0df; --approval-bg: #fbf1d6; --info-bg: #e8eefb; --neutral-bg: #eef1f5;
     --focus: #2457d6; --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .1);
     color-scheme: light;
@@ -33,7 +35,7 @@
     :root:not([data-theme="light"]) {
       --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #9aa4b2; --line: #2a323e; --rail: #3a4452;
       --accent: #7ea2ff; --http: #7ea2ff; --cmd: #f0a35a; --evt: #c08df0; --opa: #4fd1a0; --other: #9aa4b2; --internal: #b8c1cd;
-      --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d; --bundle: #5fd3e6;
+      --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d; --bundle: #5fd3e6; --release: #f08cb0;
       --ok-bg: #12332a; --deny-bg: #3a1a1c; --error-bg: #3a2a14; --approval-bg: #38300f; --info-bg: #1b2740; --neutral-bg: #222a35;
       --shadow: none; color-scheme: dark;
     }
@@ -41,7 +43,7 @@
   :root[data-theme="dark"] {
     --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #9aa4b2; --line: #2a323e; --rail: #3a4452;
     --accent: #7ea2ff; --http: #7ea2ff; --cmd: #f0a35a; --evt: #c08df0; --opa: #4fd1a0; --other: #9aa4b2; --internal: #b8c1cd;
-    --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d; --bundle: #5fd3e6;
+    --ok: #4fd1a0; --deny: #ff8080; --error: #f6b36b; --approval: #f2c66d; --bundle: #5fd3e6; --release: #f08cb0;
     --ok-bg: #12332a; --deny-bg: #3a1a1c; --error-bg: #3a2a14; --approval-bg: #38300f; --info-bg: #1b2740; --neutral-bg: #222a35;
     --shadow: none; color-scheme: dark;
   }
@@ -164,14 +166,14 @@
   .dim { opacity: .22; }
   .lk-http { color: var(--http); } .lk-oidc { color: var(--approval); } .lk-opa { color: var(--opa); } .lk-bundle { color: var(--bundle); }
   .lk-jdbc { color: var(--internal); } .lk-cmd { color: var(--cmd); } .lk-evt { color: var(--evt); } .lk-other { color: var(--other); }
-  .lk-rail { color: var(--rail); }
+  .lk-rail { color: var(--rail); } .lk-release { color: var(--release); }
 </style>
 </head>
 <body>
 <header>
   <div>
     <h1>Governance flow explainer</h1>
-    <p>How a manifest travels from the client through Governance, OPA and the two Kafka protocol topics to the Orchestrator, and back. Two views of the same scenarios: a sequence diagram, and a component map that traces each step across the running services. Pick a scenario, press play, or step through with <kbd>←</kbd> <kbd>→</kbd> and <kbd>space</kbd>.</p>
+    <p>How a manifest travels from the client through Governance, OPA and the two Kafka protocol topics to the Orchestrator, and back. Two views of the same scenarios: a sequence diagram, and a component map that traces each step across the running services and shows how a policy release reaches the OPA sidecar in deployed environments. Pick a scenario, press play, or step through with <kbd>←</kbd> <kbd>→</kbd> and <kbd>space</kbd>.</p>
   </div>
   <button class="theme" id="theme" type="button" aria-label="Toggle colour theme">Theme: auto</button>
 </header>
@@ -204,8 +206,8 @@
       <svg id="svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svgtitle"><title id="svgtitle">Sequence diagram of the selected scenario</title></svg>
     </section>
     <section class="panel diagram components" id="cpanel" aria-label="Component map" hidden>
-      <svg id="csvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="csvgtitle"><title id="csvgtitle">Component map: services, database, Kafka topics and clients</title></svg>
-      <p class="caption">Click a service, topic or link for details. Press play or step through: the scenario is traced across the components, and each badge shows the latest step that touched that component.</p>
+      <svg id="csvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="csvgtitle"><title id="csvgtitle">Component map: services, database, Kafka topics, clients and the policy release supply chain</title></svg>
+      <p class="caption">Click a service, topic or link for details. Press play or step through: the scenario is traced across the components, and each badge shows the latest step that touched that component. The bottom zone is the release path of deployed environments (ADR 0008): the policy repository publishes signed revisions to Artifactory, a pull request pins them in the release file, and the OPA sidecar pulls exactly those.</p>
     </section>
     <aside class="panel log" aria-label="Step log and details">
       <h2 id="asideTitle">Steps</h2>
@@ -217,7 +219,8 @@
     <li style="--c: var(--http)">HTTP (REST, browser)</li>
     <li style="--c: var(--approval)">OIDC sign-in, JWKS</li>
     <li style="--c: var(--opa)">OPA decision call</li>
-    <li style="--c: var(--bundle)">OPA bundle poll</li>
+    <li style="--c: var(--bundle)">OPA bundles: local poll, Artifactory publish and pull</li>
+    <li style="--c: var(--release)">policy release: pull requests, release file, Helm (release mode)</li>
     <li style="--c: var(--internal)">JDBC</li>
     <li style="--c: var(--cmd)"><code>requests.manifest</code> commands</li>
     <li style="--c: var(--evt)"><code>response.manifest</code> events</li>
@@ -241,6 +244,7 @@
       <li>Six bundles (<code>core</code>, <code>manifests</code>, <code>naming</code>, <code>quotas</code>, <code>resources</code>, <code>changes</code>) are composed by <code>core</code> into one decision. Decision precedence is <code>HARD_DENY &gt; DENY &gt; REQUIRE_APPROVAL &gt; ALLOW</code>. Only bypassable violations honour exceptions, and only exceptions Governance itself resolved. Approval requirements are never bypassable.</li>
       <li>The Orchestrator releases Actions only after verifying <code>decisionId + planId + planDigest + stateVersion</code>. A plan computed against an older <code>stateVersion</code> ends as <code>STALE_PLAN</code>.</li>
       <li>OPA unreachable, a bundle revision that differs from the active release, a missing bundle or a Java/Rego disagreement all yield <code>ERROR</code>: nothing is published and the API answers 503.</li>
+      <li>In deployed environments the policy set is pinned by <code>deploy/helm/governance/releases/&lt;env&gt;.json</code>: Workflow B publishes signed, immutable revisions, Workflows C and E change the file through pull requests, the OPA sidecar pulls exactly the pinned revisions and verifies their signatures, and a pod serves only when the whole set is active. Upload, activate and rollback through the API answer <code>409 POLICY_SOURCE_IS_GIT</code>.</li>
     </ul>
     <p>Sources: <code>docs/governance.md</code>, <code>docs/kafka-contract.md</code>, <code>docs/admin-ui.md</code>, <code>deploy/docker-compose.yml</code>, the Flyway migrations, <code>RequestLifecycle.java</code>, <code>GovernanceTypes.avsc</code>, <code>decision.rego</code>, <code>catalog.rego</code>. Keep this page in step with them.</p>
   </section>
@@ -254,7 +258,7 @@
     { id: 'client', name: 'Client', sub: 'developer / CI' },
     { id: 'approver', name: 'Approver', sub: 'governance-approver' },
     { id: 'governance', name: 'Governance', sub: 'Spring Boot + Postgres' },
-    { id: 'opa', name: 'OPA', sub: 'governance bundle' },
+    { id: 'opa', name: 'OPA', sub: 'six bundles' },
     { id: 'kafka', name: 'Kafka', sub: 'two protocol topics' },
     { id: 'orchestrator', name: 'Orchestrator', sub: 'plans + confirmed state' },
     { id: 'processor', name: 'Processor', sub: 'applies Actions' },
@@ -632,7 +636,7 @@
 
   // ---------- component map ----------
   // Services from deploy/docker-compose.yml, tables from the Flyway migrations, topics from docs/kafka-contract.md.
-  const CW = 1200, CH = 632;
+  const CW = 1200, CH = 806;
   const ZONES = [
     { title: 'Clients', x: 16, y: 16, w: 170, h: 600 },
     { title: 'Edge & identity', x: 206, y: 16, w: 180, h: 600 },
@@ -641,6 +645,7 @@
     { title: 'Kafka · KRaft · SASL + ACLs', x: 716, y: 190, w: 170, h: 426 },
     { title: 'Execution plane (existing)', x: 906, y: 16, w: 288, h: 600,
       note: ['Not implemented in this repo. The two', 'simulators mirror the contract the real', 'Orchestrator and Processor must honour', '(docs/orchestrator-integration.md).'] },
+    { title: 'Policy supply chain · release mode', x: 16, y: 640, w: 1178, h: 150 },
   ];
   const NODES = {
     developer: { x: 26, y: 150, w: 150, h: 64, title: 'Developer / CI', sub: 'REST client + JWT', kind: 'Client',
@@ -665,20 +670,20 @@
       items: ['Security headers and CSP, long cache for hashed assets', 'Health at /healthz', 'No CORS on Governance is needed'],
       code: 'admin-ui/nginx/default.conf.template' },
     governance: { x: 416, y: 46, w: 270, h: 284, title: 'governance', sub: 'Spring Boot 4 · WebFlux · JWT resource server', kind: 'Service',
-      lines: ['REST API: manifests · requests · approvals · admin', 'Stage 1 + stage 2 evaluation through OPA', 'RequestLifecycle + request_status_history', 'Approvals: quorum, SoD, TTL, revalidation', 'Outbox relay → requests.manifest', 'Inbox + dead letters ← response.manifest', 'Policy bundles, configuration, exceptions', 'Bundle server for OPA · audit log · metrics'],
+      lines: ['REST API: manifests · requests · approvals · admin', 'Stage 1 + stage 2 evaluation through OPA', 'RequestLifecycle + request_status_history', 'Approvals: quorum, SoD, TTL, revalidation', 'Outbox relay → requests.manifest', 'Inbox + dead letters ← response.manifest', 'Policy releases, configuration, exceptions, teams', 'Bundle server (local mode) · audit log · metrics'],
       desc: 'The single governance application (ADR 0001). It owns the request lifecycle, asks OPA for every decision, publishes commands through a transactional outbox and consumes the Orchestrator’s events through an inbox. JDBC runs on a dedicated blocking scheduler (ADR 0003).',
-      items: ['Fails closed: OPA unreachable, bundle revision mismatch or Java/Rego disagreement all yield ERROR and 503', 'Serves the active policy bundle to OPA at /internal/opa/bundles/governance', 'Every state change and admin action is audited'],
+      items: ['Fails closed: OPA unreachable, bundle revision mismatch, ready == false or Java/Rego disagreement all yield ERROR and 503', 'Local mode serves the six active bundles to OPA at /internal/opa/bundles/{name}; release mode reads the expected release from the mounted release file and answers 409 POLICY_SOURCE_IS_GIT to upload, activate and rollback', 'Every state change and admin action is audited'],
       code: 'governance/src/main/java/com/itland/governance' },
     postgres: { x: 416, y: 370, w: 270, h: 246, title: 'postgres', sub: 'Flyway migrations · 15 tables', kind: 'Database',
       lines: ['#requests', 'manifest_request · request_status_history', 'governance_decision · proposed_plan', 'repository_state', '#approvals', 'approval_request · approval_decision', 'approval_configuration', '#policy', 'policy_configuration · policy_bundle_version', 'policy_exception', '#messaging', 'kafka_outbox · kafka_inbox', 'kafka_dead_letter', '#audit', 'audit_record'],
       desc: 'System of record for Governance. A status transition, its history row, the decision and the outbox row are written in one transaction; manifest_request.version gives optimistic locking.',
       items: ['requests: manifest_request, request_status_history, governance_decision, proposed_plan, repository_state (latest confirmed stateVersion)', 'approvals: approval_request, approval_decision, approval_configuration', 'policy: policy_configuration, policy_bundle_version (bundle bytes + test report), policy_exception', 'messaging: kafka_outbox, kafka_inbox, kafka_dead_letter', 'audit: audit_record'],
       code: 'governance/src/main/resources/db/migration/' },
-    opa: { x: 726, y: 46, w: 150, h: 120, title: 'opa', sub: 'Open Policy Agent', kind: 'Policy engine',
+    opa: { x: 726, y: 46, w: 150, h: 120, title: 'opa', sub: 'Compose service · pod sidecar', kind: 'Policy engine',
       lines: ['data.governance.core.decision', 'six bundles: core · manifests · naming', 'quotas · resources · changes'],
-      desc: 'Runs six Rego v1 bundles built from policies/bundles, one per root governance/<name>. Core composes the others into one decision. Governance calls the decision document with the full input and checks that the revision OPA reports for every bundle equals the ACTIVE release.',
-      items: ['Decision precedence HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW', 'catalog.rego publishes every policy id with severity and bypassable flag for the admin console', 'A bundle OPA does not adopt within 90 s is marked FAILED and the previous one restored'],
-      code: 'policies/bundles/core/core.rego' },
+      desc: 'Runs six Rego v1 bundles built from policies/bundles, one per root governance/<name>. Core composes the others into one decision. Governance calls the decision document with the full input and checks that the revision OPA reports for every bundle equals the expected release. Locally it is a Compose service polling Governance; on OpenShift it is a sidecar in the Governance pod (Data API on 127.0.0.1:8181, health and metrics on 8282) that pulls the pinned, signed revisions from Artifactory.',
+      items: ['Decision precedence HARD_DENY > DENY > REQUIRE_APPROVAL > ALLOW', 'Every bundle publishes its catalogue entries (policy id, severity, bypassable) and core merges them for the admin console', 'Local mode: a bundle OPA does not adopt within 90 s is marked FAILED and the previous one restored. Release mode: a pod is ready only when all six pinned revisions are active and verified; rollback is Workflow E'],
+      code: 'policies/bundles/core/core.rego · deploy/helm/governance/templates/_helpers.tpl (sidecar config)' },
     't-requests': { topic: true, x: 734, y: 216, w: 134, h: 52, title: 'requests.manifest', sub: 'commands · key teamId', kind: 'Kafka topic',
       desc: 'Governance → Orchestrator. ManifestCommand (Avro): SUBMIT_MANIFEST, AUTHORIZE_PLAN, REJECT_PLAN. Published by the outbox relay with an idempotent producer.',
       items: ['Carries requestId, teamId, repositoryId, environment and, after stage 2, planId, planDigest, decisionId', 'Same partition count as teams.repo.manifest so the Orchestrator can co-locate state'],
@@ -712,6 +717,21 @@
       desc: 'Consumes Actions from teams.changes, applies them (here: simulated) and reports per-Action results on request.status.',
       items: ['Unchanged by the Governance handshake'],
       code: 'processor-simulator/' },
+    policies: { x: 26, y: 662, w: 200, h: 96, title: 'governance-policies', sub: 'Git repository · Workflows A to E', kind: 'Policy repository',
+      lines: ['A validate · B build, sign, publish', 'C promote · D verify · E rollback'],
+      desc: 'The Rego lives in its own repository (today policies/ in this checkout, laid out for the split). Workflow A gates every pull request: fmt, strict check, the Rego tests with all six bundles, coverage, roots and imports, lib copies, fixtures against expected decisions, schemas, Regal, gitleaks, a dry-run build per bundle. Workflow B builds each changed bundle as a signed, optimized, checksummed revision and publishes it with a candidate release manifest. C promotes a release to an environment, D verifies it on the pods, E rolls back to a verified release.',
+      items: ['Publishing promotes nothing: a release becomes active only through a pull request on the release file', 'Workflow D reads each pod’s readiness probe and evaluates the fixtures on each sidecar through oc exec', 'Artifactory, OpenShift and GitHub inputs are variables and secrets referenced by name only'],
+      code: 'policies/.github/workflows/ · policies/docs/operations.md' },
+    releasefile: { x: 246, y: 662, w: 320, h: 96, title: 'releases/<env>.json', sub: 'policy_kafka · Helm chart · ConfigMaps', kind: 'Release file',
+      lines: ['rel-<id> · six pinned revisions · keyId per bundle', 'rendered: opa.yaml resource paths + signing.keyid', 'mounted: /etc/governance/release.json'],
+      desc: 'The promoted set of one environment, changed only by the pull requests Workflows C and E open. The Helm chart renders it into the sidecar configuration (pinned Artifactory paths, one verification key id per bundle) and mounts it for Governance; a change alters the pod’s checksum annotation and rolls the pods under the readiness gate.',
+      items: ['Governance in release mode reads the expected release from this file (FilePolicyReleaseSource, re-read on change)', 'helm template fails when the file is missing, incomplete or names a key id the chart does not trust', 'Promotion history = Git history of this file plus the immutable records and events in Artifactory'],
+      code: 'deploy/helm/governance/releases/ · deploy/helm/governance/templates/_helpers.tpl' },
+    artifactory: { x: 586, y: 662, w: 240, h: 96, title: 'Artifactory · opa-bundles', sub: 'immutable · signed · checksummed', kind: 'Artifact repository',
+      lines: ['<bundle>/<rev>/<rev>.tar.gz · .sha256 · signatures', 'releases/candidates · <env>/<id>.json', '<env>/events · <env>/verified'],
+      desc: 'Generic repository with deploy-without-overwrite: Workflow B uploads every revision once behind a HEAD pre-check; promotion records, events and verified markers are immutable files too. The sidecar pulls exactly the revisions its configuration pins, with a read-only token from a Secret.',
+      items: ['Revision = <bundle>-<yyyyMMdd>.<run>-<short sha>; the release id is the hash of the sorted revision set, computed identically by the build and by Governance', 'No mutable pointer: which revision is live is decided by the release file, not by Artifactory', 'Revisions referenced by a promotion record are never removed'],
+      code: 'policies/scripts/publish.sh · promote.sh · verify-artifacts.sh' },
   };
   const LINKS = [
     { id: 'l-dev', from: 'developer', to: 'governance', kind: 'http', label: 'POST /api/v1/manifests · GET /requests/{id}', pts: [[176, 182], [416, 182]], desc: 'HTTPS with a bearer JWT. Idempotency-Key makes retries safe; the Location header points at the status resource.' },
@@ -721,7 +741,7 @@
     { id: 'l-ui-oidc', from: 'adminui', to: 'oidc', kind: 'oidc', label: '/oidc/* proxy', pts: [[296, 320], [296, 110]], desc: 'Authorization code + PKCE from the browser, proxied with Host: mock-oidc. The proxy pins the Host header so the issuer in the minted token is exactly the one Governance validates.' },
     { id: 'l-jwks', from: 'governance', to: 'oidc', kind: 'oidc', label: 'JWKS', pts: [[416, 78], [376, 78]], desc: 'Governance fetches the signing keys from the issuer to validate every JWT.' },
     { id: 'l-decision', from: 'governance', to: 'opa', kind: 'opa', label: 'decision', pts: [[686, 96], [726, 96]], desc: 'POST /v1/data/governance/core/decision?provenance=true, one call per stage. Timeouts, bounded retries, release check across all six bundles.' },
-    { id: 'l-bundle', from: 'opa', to: 'governance', kind: 'bundle', label: 'bundle poll', pts: [[726, 136], [686, 136]], desc: 'GET /internal/opa/bundles/governance: OPA polls the ACTIVE bundle with a static bearer token; ETag / 304 when unchanged.' },
+    { id: 'l-bundle', from: 'opa', to: 'governance', kind: 'bundle', label: 'bundle poll (local)', pts: [[726, 136], [686, 136]], desc: 'Local mode (Compose, IT): GET /internal/opa/bundles/{name} for each of the six bundles; OPA polls the ACTIVE versions with a static bearer token, ETag / 304 when unchanged. In release mode this endpoint answers 404 and the sidecar pulls from Artifactory instead.' },
     { id: 'l-jdbc', from: 'governance', to: 'postgres', kind: 'jdbc', label: 'JDBC', pts: [[551, 330], [551, 370]], both: true, desc: 'All persistence. One transaction per transition: status, history, decision, outbox row.' },
     { id: 'l-produce-cmd', from: 'governance', to: 't-requests', kind: 'cmd', label: 'outbox', pts: [[686, 242], [734, 242]], desc: 'The outbox relay publishes claimed rows with an idempotent producer, keyed by teamId.' },
     { id: 'l-consume-evt', from: 't-response', to: 'governance', kind: 'evt', label: 'inbox', pts: [[734, 310], [686, 310]], desc: 'Manual commits; insertIfAbsent on eventId drops duplicates before any handler runs.' },
@@ -732,9 +752,14 @@
     { id: 'l-orch-status', from: 't-status', to: 'orchestrator', kind: 'other', label: 'results', pts: [[868, 514], [940, 514], [940, 470]], desc: 'Reconciled into the confirmed state; stateVersion is incremented.' },
     { id: 'l-proc-changes', from: 't-changes', to: 'processor', kind: 'other', label: '', pts: [[868, 458], [906, 458], [906, 565], [916, 565]], desc: 'The Processor consumes Actions.' },
     { id: 'l-proc-status', from: 'processor', to: 't-status', kind: 'other', label: '', pts: [[916, 595], [892, 595], [892, 526], [868, 526]], desc: 'The Processor reports results.' },
+    { id: 'l-publish', from: 'policies', to: 'artifactory', kind: 'bundle', label: 'B publish · C/D/E records', pts: [[126, 662], [126, 650], [620, 650], [620, 662]], desc: 'Workflow B uploads each changed bundle as <bundle>/<revision>/<revision>.tar.gz with its sha256 and signatures.json (HEAD pre-check: an existing path fails the run) and writes the candidate manifest under releases/candidates/. Workflows C, D and E add immutable promotion records, events and verified markers under releases/<env>/.' },
+    { id: 'l-release-pr', from: 'policies', to: 'releasefile', kind: 'release', label: '', pts: [[226, 710], [246, 710]], desc: 'Workflow C (promote) and Workflow E (rollback) re-verify the release’s artifacts, then open a pull request on deploy/helm/governance/releases/<env>.json in policy_kafka. dev promotions auto-merge; staging and production need reviewers; rollbacks are never auto-merged.' },
+    { id: 'l-release-governance', from: 'releasefile', to: 'governance', kind: 'release', label: '', pts: [[396, 662], [396, 352], [470, 352], [470, 330]], desc: 'The chart mounts the release file at /etc/governance/release.json. Governance (openshift profile, release mode) reads the expected release id and revisions from it, re-reads it when it changes, and fails closed when the file is missing or its id does not match its revisions.' },
+    { id: 'l-release-opa', from: 'releasefile', to: 'opa', kind: 'release', label: 'opa.yaml: pinned paths, key ids', pts: [[500, 758], [500, 776], [896, 776], [896, 183], [850, 183], [850, 166]], desc: 'Helm renders the sidecar configuration from the release file: one resource path per bundle (<bundle>/<revision>/<revision>.tar.gz), persist: true, polling 60 to 120 s, and signing.keyid per bundle, with the trusted public keys under keys. A changed file changes the pod’s checksum annotation and rolls the pods.' },
+    { id: 'l-pull', from: 'artifactory', to: 'opa', kind: 'bundle', label: 'pull', pts: [[706, 662], [706, 183], [790, 183], [790, 166]], desc: 'Release mode: the sidecar downloads exactly the pinned revisions with a read-only bearer token, verifies the RS256 signature with the key id named for the bundle, activates the set and only then reports ready on /health?bundles&plugins. A failed poll keeps the active bundles; a new pod with Artifactory unreachable never becomes ready and receives no traffic.' },
   ];
-  const LINK_KINDS = ['http', 'oidc', 'opa', 'bundle', 'jdbc', 'cmd', 'evt', 'other', 'rail'];
-  const KIND_NAMES = { http: 'HTTP', oidc: 'OIDC', opa: 'OPA decision call', bundle: 'OPA bundle poll', jdbc: 'JDBC', cmd: 'Kafka · requests.manifest', evt: 'Kafka · response.manifest', other: 'Kafka · existing topic' };
+  const LINK_KINDS = ['http', 'oidc', 'opa', 'bundle', 'release', 'jdbc', 'cmd', 'evt', 'other', 'rail'];
+  const KIND_NAMES = { http: 'HTTP', oidc: 'OIDC', opa: 'OPA decision call', bundle: 'OPA bundles (poll, publish, pull)', release: 'Policy release (Git, Helm)', jdbc: 'JDBC', cmd: 'Kafka · requests.manifest', evt: 'Kafka · response.manifest', other: 'Kafka · existing topic' };
 
   // Map a sequence step onto the components it touches, as a path of node ids.
   function pathFor(s) {

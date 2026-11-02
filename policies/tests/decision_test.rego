@@ -26,10 +26,10 @@ test_exception_exempts_bypassable_violation if {
 	inp := object.union(f.request("development", [f.topic("orders", 6)], []), {"exceptions": [exception("AUTHORIZED_PREFIX_REQUIRED", "orders*", [])]})
 	d := core.decision with input as inp
 	d.decision == "ALLOW"
+	d.appliedExceptions == ["exc-1"]
 	some v in d.violations
 	v.exempted == true
 	v.exceptionId == "exc-1"
-	d.appliedExceptions == ["exc-1"]
 }
 
 test_exception_resource_scope_must_match if {

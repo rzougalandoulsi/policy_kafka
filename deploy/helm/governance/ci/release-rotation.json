@@ -1,0 +1,37 @@
+{
+  "releaseId": "rel-788a62c985e8",
+  "createdAt": "2026-11-01T23:49:05Z",
+  "gitSha": "d52b689",
+  "contractVersion": "2.0",
+  "opaVersion": "1.22.0",
+  "source": "promotion",
+  "previousReleaseId": null,
+  "bundles": {
+    "core": {
+      "revision": "core-d52b689",
+      "sha256": "2153ded7f0c3405bfa152c3485f374193fec09cb963f9262d0b182c3c2912578",
+      "keyId": "governance-policies"
+    },
+    "manifests": {
+      "revision": "manifests-d52b689",
+      "sha256": "ced74e516fb0f33acb0b8eb2a02574631f070267750d86da7dcd6fb5e0ddb9a9"
+    },
+    "naming": {
+      "revision": "naming-d52b689",
+      "sha256": "b1382b22d747ba9a78f3eb8d0f85d506721a27580771a6d7250f9838eb681e32",
+      "keyId": "governance-policies-2"
+    },
+    "quotas": {
+      "revision": "quotas-d52b689",
+      "sha256": "2dc09e1b6dc55361fb5428286a845f7339ec26bb29ec49dfa413c340133f450c"
+    },
+    "resources": {
+      "revision": "resources-d52b689",
+      "sha256": "15011ba27e6a77d08628fd7f879189eceec3fb78a4eb1dae1048295cb3231415"
+    },
+    "changes": {
+      "revision": "changes-d52b689",
+      "sha256": "5bad2f9b3d6e7b1114cc573aefbce42b0ea9644343db4d8a7e9b74eac93edee9"
+    }
+  }
+}

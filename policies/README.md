@@ -19,6 +19,7 @@ scripts/               opa.sh install-opa.sh build.sh validate.sh changed-bundle
                        build-release.sh release-manifest.sh assemble-release.sh publish.sh
                        verify-artifacts.sh promote.sh app-repo-pr.sh verify-active.sh mark-verified.sh
 .github/workflows/     validate.yml (A)  publish.yml (B)  promote.yml (C)  verify.yml (D)  rollback.yml (E);  .github/CODEOWNERS per bundle
+docs/                  bundle-authoring.md  contract.md  operations.md (Workflows A to E)  extraction-checklist.md
 OPA_VERSION opa.sha256 REGAL_VERSION .regal/config.yaml .gitleaks.toml
 build.sh test.sh       root wrappers kept for policy_kafka (PlatformContainers, upload-release.sh)
 ```
@@ -53,9 +54,10 @@ check on `main` and enable code-owner reviews (`.github/CODEOWNERS`, teams are p
 **B, `publish.yml`** runs on pushes to `main` that change a bundle (or on demand for a bundle list). For each changed
 bundle since the previous candidate manifest: revision `<bundle>-<yyyyMMdd>.<run_number>-<short sha>`, `.manifest`
 metadata (`git_sha`, `git_ref`, `built_at`, `contract_version`, `opa_version`), `opa build -O1` with explicit
-entrypoints and a per-bundle partial namespace, RS256 signature with a claims file (`keyid: governance-policies`),
-`sha256`, extracted `signatures.json`. Unchanged bundles keep their last published revision and are downloaded back and
-checksummed. Smoke: `opa run --server` with signature verification, `ready == true`, revisions equal to the manifest,
+entrypoints and a per-bundle partial namespace, RS256 signature with a claims file carrying the signing key id
+(`OPA_BUNDLE_SIGNING_KEY_ID`, default `governance-policies`; the release manifest records it per bundle as `keyId`),
+`sha256`, extracted `signatures.json`. Unchanged bundles keep their last published revision and key id and are
+downloaded back and checksummed. Smoke: `opa run --server` with signature verification, `ready == true`, revisions equal to the manifest,
 every fixture equal to its expected decision. Publish: HEAD pre-check of every target path (any existing path fails the
 run), upload to `<repo>/<bundle>/<revision>/`, properties `git.sha`, `contract.version`, `opa.version`, `release.id`,
 verification by download, candidate manifest `releases/candidates/<releaseId>.json`, GitHub Release draft
@@ -90,7 +92,9 @@ Inputs that live outside the repository (plan assumptions 1 and 6), all referenc
 | environment `artifactory-publish` secret | `OPA_BUNDLE_SIGNING_KEY` | RS256 private key (PEM); the public key is derived in the job and shipped to OPA through the Helm chart |
 | environment `artifactory-publish` secret | `ARTIFACTORY_PUBLISH_TOKEN` | fallback only: scoped, expiring token, used when no OIDC provider is configured |
 | repository secret | `GITLEAKS_LICENSE` | only for organisation accounts |
-| repository variable | `OPA_BUNDLE_SIGNING_PUBLIC_KEY` | public key (PEM) Workflows C, D and E verify signatures with |
+| repository variable | `OPA_BUNDLE_SIGNING_KEY_ID` | id of the current signing key pair (default `governance-policies`); written into the signature claims by Workflow B and into every release manifest entry |
+| repository variable | `OPA_BUNDLE_SIGNING_PUBLIC_KEY` | public key (PEM) of that pair; Workflows C, D and E verify signatures with it |
+| repository variable | `OPA_BUNDLE_SIGNING_KEY_ID_PREVIOUS`, `OPA_BUNDLE_SIGNING_PUBLIC_KEY_PREVIOUS` | the previous pair, set only during a key rotation so that releases signed under either key verify (`docs/operations.md`, runbook "Signing key rotation") |
 | repository variable | `APP_REPOSITORY` | `ORG/policy_kafka`, where Workflows C and E open release pull requests |
 | environments `promote-<env>`, `rollback-<env>` | `APP_REPO_TOKEN`, `ARTIFACTORY_PROMOTE_TOKEN` (fallback) | pull requests on the application repository; deploy-without-overwrite on `releases/**` |
 | environments `verify-<env>` | `OPENSHIFT_SERVER`, `OPENSHIFT_NAMESPACE`, `OPENSHIFT_TOKEN`, `ARTIFACTORY_VERIFY_TOKEN` (fallback), `SLACK_WEBHOOK_URL` | Workflow D cluster access (get pods, exec) and notifications |
@@ -106,4 +110,12 @@ Governance's `PolicyRelease.of`, so a set of revisions has one id wherever it is
 | governance-policies | policy_kafka (Governance) |
 |---|---|
 | Rego, bundle roots, `contract_version`, tests, fixtures, catalogue schema, release manifests, Workflows A to E, Artifactory publishing and promotion | `OpaInputAssembler` for a contract major, decision parsing, `PolicyRelease` verification and readiness, team configuration, exceptions, usage, the OPA sidecar config template and the release ConfigMap (Helm chart), local-mode bundle serving |
-| Shared: `contracts/*.schema.json`. Governance keeps a pinned copy under `contracts/opa/`; `scripts/check-contract-sync.sh` keeps both equal while they share one repository. After the extraction the schemas are published as a versioned artifact and Governance pins the version. A major bump ships Governance first (accepting both majors), then the domain bundles, then core. | |
+| Shared: `contracts/*.schema.json`. Governance keeps a pinned copy under `contracts/opa/`; `scripts/check-contract-sync.sh` keeps both equal while they share one repository. After the extraction the schemas are published as a versioned artifact and Governance pins the version. A major bump ships Governance first (accepting both majors), then all six bundles in one release (core requires every bundle's major to equal its own), then Governance drops the old major. | |
+
+## Documentation
+
+`docs/bundle-authoring.md` (where a rule lives, roots, the bundle contract, catalogue entries, tests and fixtures,
+rollout with shadow mode), `docs/contract.md` (schemas, versions, change checklist), `docs/operations.md` (Workflows A
+to E: state model, inputs, failure modes, common tasks), `docs/extraction-checklist.md` (subtree split, branch
+protection, environments, Artifactory onboarding, first publish). Incident procedures live in policy_kafka's
+`docs/runbook.md`.

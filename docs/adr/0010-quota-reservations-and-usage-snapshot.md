@@ -32,3 +32,6 @@ repository on `teams.repo.manifest` (`RepoConfirmed`, compacted, keyed `teamId|r
 - Governance needs read access to `teams.repo.manifest`; the real Orchestrator must publish `RepoConfirmed` there with
   partitions if `topicPartitions` quotas are to be exact (plan assumption 3). Until then partitions are "as last declared".
 - A long OPA outage during stage 2 holds the team's row lock only for the bounded evaluation timeout per attempt.
+
+## Update 2026-11-02 (Phase 8 review)
+Implemented as decided and proven by the end-to-end scenarios (joint quota across two repositories, concurrent approvals admitting exactly one plan, prefix change without restart, shadow findings never blocking). Still open and owned by Phase 6: whether the real Orchestrator's `RepoConfirmed` carries partitions and the other resource types; until then `topicPartitions` usage is "as last declared" (`repository_usage.declared_partitions`, default 1). The freshness guard and the reservation TTL are the knobs operators have (`governance.usage.require-fresh-snapshot`, `authorizationValidity`).

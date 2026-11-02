@@ -2,22 +2,24 @@
 # Verifies that every artifact of a release manifest exists in Artifactory unchanged and that the set loads under
 # signature verification (no rebuild): download each tarball, compare its sha256 with the manifest, then run the
 # smoke (opa run --server with --verification-key, ready == true, fixtures). Used by Workflows C, D and E.
-#   verify-artifacts.sh --manifest FILE --verification-key PUBLIC.pem [--artifacts DIR] [--skip-smoke]
+#   verify-artifacts.sh --manifest FILE (--verification-key PUBLIC.pem | --verification-keys DIR) [--artifacts DIR] [--skip-smoke]
+# --verification-keys DIR holds <keyId>.pem per trusted key; the smoke picks the one the manifest's key id names.
 # Environment: ARTIFACTORY_TOKEN (read-only).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-manifest="" pubkey="" artifacts="" smoke=1
+manifest="" pubkey="" keys_dir="" artifacts="" smoke=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --manifest) manifest="$2"; shift 2 ;;
     --verification-key) pubkey="$2"; shift 2 ;;
+    --verification-keys) keys_dir="$2"; shift 2 ;;
     --artifacts) artifacts="$2"; shift 2 ;;
     --skip-smoke) smoke=0; shift ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$manifest" ] || { echo "usage: $0 --manifest FILE --verification-key PUB [--artifacts DIR] [--skip-smoke]" >&2; exit 2; }
-[ $smoke -eq 0 ] || [ -n "$pubkey" ] || { echo "--verification-key is required unless --skip-smoke" >&2; exit 2; }
+[ -n "$manifest" ] || { echo "usage: $0 --manifest FILE (--verification-key PUB | --verification-keys DIR) [--artifacts DIR] [--skip-smoke]" >&2; exit 2; }
+[ $smoke -eq 0 ] || [ -n "$pubkey" ] || [ -n "$keys_dir" ] || { echo "--verification-key or --verification-keys is required unless --skip-smoke" >&2; exit 2; }
 if [ -z "$artifacts" ]; then mkdir -p dist/verify; artifacts="$(mktemp -d "dist/verify/$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["releaseId"])' "$manifest").XXXXXX")"; fi
 mkdir -p "$artifacts"
 echo ">> HEAD every artifact"
@@ -34,6 +36,7 @@ echo ">> download and compare checksums"
 scripts/assemble-release.sh --manifest "$manifest" --artifacts "$artifacts"
 if [ $smoke -eq 1 ]; then
   echo ">> signatures and behaviour (opa run --server with the verification key)"
-  tests/integration/smoke.sh --manifest "$manifest" --artifacts "$artifacts" --verification-key "$pubkey" --port "${SMOKE_PORT:-18195}"
+  key_args=(--verification-key "$pubkey"); [ -n "$keys_dir" ] && key_args=(--verification-keys "$keys_dir")
+  tests/integration/smoke.sh --manifest "$manifest" --artifacts "$artifacts" "${key_args[@]}" --port "${SMOKE_PORT:-18195}"
 fi
 echo "verify-artifacts OK: $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["releaseId"])' "$manifest")"

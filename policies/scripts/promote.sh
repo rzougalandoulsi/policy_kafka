@@ -5,18 +5,21 @@
 #   <repo>/releases/<env>/events/<ts>-promote-<releaseId>.json   append-only timeline (one file per event)
 # and the application repository's release file (deploy/helm/governance/releases/<env>.json) is written for the PR
 # (--app-repo DIR): merging that PR is what rolls the pods.
-#   promote.sh --release-id rel-xxx --environment dev|staging|production --verification-key PUB
+#   promote.sh --release-id rel-xxx --environment dev|staging|production (--verification-key PUB | --verification-keys DIR)
 #              [--source candidates|dev|staging] [--app-repo DIR] [--app-release-dir deploy/helm/governance/releases]
 #              [--actor NAME] [--reason TEXT] [--rollback]
+# --verification-keys DIR holds <keyId>.pem for every trusted signing key (current and previous during a rotation); the
+# smoke picks the file named by the manifest's key id.
 # Environment: ARTIFACTORY_URL, ARTIFACTORY_REPOSITORY, ARTIFACTORY_TOKEN (deploy-without-overwrite on releases/**).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-release_id="" env="" pubkey="" source="candidates" app_repo="" app_dir="deploy/helm/governance/releases" actor="${GITHUB_ACTOR:-$(whoami)}" reason="" rollback=0
+release_id="" env="" pubkey="" keys_dir="" source="candidates" app_repo="" app_dir="deploy/helm/governance/releases" actor="${GITHUB_ACTOR:-$(whoami)}" reason="" rollback=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --release-id) release_id="$2"; shift 2 ;;
     --environment) env="$2"; shift 2 ;;
     --verification-key) pubkey="$2"; shift 2 ;;
+    --verification-keys) keys_dir="$2"; shift 2 ;;
     --source) source="$2"; shift 2 ;;
     --app-repo) app_repo="$2"; shift 2 ;;
     --app-release-dir) app_dir="$2"; shift 2 ;;
@@ -26,7 +29,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$release_id" ] && [ -n "$env" ] && [ -n "$pubkey" ] || { echo "usage: $0 --release-id ID --environment ENV --verification-key PUB [--source candidates|dev|staging] [--app-repo DIR]" >&2; exit 2; }
+[ -n "$release_id" ] && [ -n "$env" ] && { [ -n "$pubkey" ] || [ -n "$keys_dir" ]; } || { echo "usage: $0 --release-id ID --environment ENV (--verification-key PUB | --verification-keys DIR) [--source candidates|dev|staging] [--app-repo DIR]" >&2; exit 2; }
 case "$env" in dev|staging|production) ;; *) echo "environment must be dev, staging or production" >&2; exit 1 ;; esac
 case "$source" in candidates|dev|staging) ;; *) echo "source must be candidates, dev or staging" >&2; exit 1 ;; esac
 [ "$source" != "$env" ] || { echo "source and target environment are the same" >&2; exit 1; }
@@ -50,7 +53,8 @@ if [ $rollback -eq 1 ]; then
 fi
 
 echo ">> 2. artifacts exist, checksums match, signatures verify, fixtures pass (no rebuild)"
-ARTIFACTORY_TOKEN="$ARTIFACTORY_TOKEN" scripts/verify-artifacts.sh --manifest "$work/source.json" --verification-key "$pubkey" --artifacts "$work/artifacts"
+key_args=(--verification-key "$pubkey"); [ -n "$keys_dir" ] && key_args=(--verification-keys "$keys_dir")
+ARTIFACTORY_TOKEN="$ARTIFACTORY_TOKEN" scripts/verify-artifacts.sh --manifest "$work/source.json" "${key_args[@]}" --artifacts "$work/artifacts"
 
 echo ">> 3. promotion record and event"
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -82,7 +86,7 @@ import json, sys
 m = json.load(open(sys.argv[1]))
 out = {"releaseId": m["releaseId"], "createdAt": m.get("createdAt"), "gitSha": m.get("gitSha"), "contractVersion": m.get("contractVersion"),
        "opaVersion": m.get("opaVersion"), "source": "promotion", "previousReleaseId": m.get("previousReleaseId"),
-       "bundles": {n: {"revision": b["revision"], "sha256": b["sha256"]} for n, b in m["bundles"].items()}}
+       "bundles": {n: {k: b[k] for k in ("revision", "sha256", "keyId") if k in b} for n, b in m["bundles"].items()}}
 json.dump(out, open(sys.argv[2], "w"), indent=2); open(sys.argv[2], "a").write("\n")
 print("   wrote", sys.argv[2])
 PY

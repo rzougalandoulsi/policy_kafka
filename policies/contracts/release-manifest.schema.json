@@ -33,7 +33,8 @@
             "contractVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
             "builtAt": {"type": "string", "format": "date-time"},
             "gitSha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
-            "signed": {"type": "boolean"}
+            "signed": {"type": "boolean"},
+            "keyId": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$", "description": "Id of the key pair the bundle was signed under (signature claims); the Helm chart renders it as the bundle's signing.keyid and the id must be listed in the chart's keys (signing.keyId or signing.additionalKeys)."}
           }
         }
       }

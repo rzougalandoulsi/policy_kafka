@@ -47,7 +47,7 @@ test_emitted_violations_are_catalogued if {
 	}
 }
 
-test_emitted_plan_violations_and_approvals_are_catalogued if {
+test_emitted_plan_violations_are_catalogued if {
 	d := core.decision with input as worst_plan
 	count(d.violations) > 0
 	every v in d.violations {
@@ -56,13 +56,19 @@ test_emitted_plan_violations_and_approvals_are_catalogued if {
 		p.severity == v.severity
 		p.bypassable == v.bypassable
 	}
+}
+
+test_emitted_plan_approvals_are_catalogued if {
 	raw := data.governance.changes.approvals with input as worst_plan
 	count(raw) > 0
 	every a in raw {
-		some p in core.policy_catalog
-		p.policyId == a.policyId
-		p.kind == "APPROVAL"
+		a.policyId in approval_ids
 	}
+}
+
+approval_ids contains p.policyId if {
+	some p in core.policy_catalog
+	p.kind == "APPROVAL"
 }
 
 worst_request := {

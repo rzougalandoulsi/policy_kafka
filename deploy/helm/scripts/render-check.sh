@@ -41,5 +41,15 @@ grep -q 'path: /actuator/health/readiness' "$rendered" && echo "ok   governance 
 grep -q 'resource: "core/core-' "$rendered" && echo "ok   pinned bundle paths rendered from releases/dev.json" || { echo "FAIL pinned paths"; status=1; }
 grep -q 'keyid: "governance-policies"' "$rendered" && echo "ok   signature verification configured" || { echo "FAIL signing"; status=1; }
 ! grep -qE 'port: 8181' "$rendered" && echo "ok   no NetworkPolicy or Service exposes 8181" || { echo "FAIL 8181 exposed"; status=1; }
+echo "== key rotation (ci/release-rotation.json: one bundle signed under governance-policies-2)"
+rot=(--set image.tag=render-check --set "signing.publicKey=$PUBKEY" --set release.file=ci/release-rotation.json)
+if helm template governance deploy/helm/governance -n governance-dev -f deploy/helm/governance/values-dev.yaml "${rot[@]}" \
+     --set "signing.additionalKeys.governance-policies-2=$PUBKEY" > "$OUT/governance-rotation.yaml"; then
+  if grep -q 'keyid: "governance-policies-2"' "$OUT/governance-rotation.yaml" && grep -q 'keyid: "governance-policies"' "$OUT/governance-rotation.yaml" \
+     && grep -qE '^      governance-policies-2:' "$OUT/governance-rotation.yaml"; then echo "ok   per-bundle key ids rendered, both keys trusted"; else echo "FAIL rotation render"; status=1; fi
+else echo "FAIL rotation render"; status=1; fi
+if helm template governance deploy/helm/governance -n governance-dev -f deploy/helm/governance/values-dev.yaml "${rot[@]}" > /dev/null 2> "$OUT/rotation-unknown-key.log"; then
+  echo "FAIL rendered although a bundle names a key id the chart does not trust"; status=1
+else grep -q "neither signing.keyId nor listed under signing.additionalKeys" "$OUT/rotation-unknown-key.log" && echo "ok   unknown key id refused at template time" || { echo "FAIL unexpected rotation error"; cat "$OUT/rotation-unknown-key.log"; status=1; }; fi
 [ $status -eq 0 ] && echo "render-check OK ($OUT)"
 exit $status

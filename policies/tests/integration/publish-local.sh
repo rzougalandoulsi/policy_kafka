@@ -4,7 +4,9 @@
 #   2. re-publishing the same revisions is refused by the pre-check, and a direct PUT is refused by the server (409);
 #   3. an incremental build of one bundle keeps the five previous revisions, downloads them back from the stand-in,
 #      verifies their checksums, smokes and publishes a second candidate that references the first;
-#   4. the smoke fails with a foreign verification key (signatures are really checked).
+#   4. the smoke fails with a foreign verification key (signatures are really checked);
+#   5. key rotation: a full build under a second key id verifies through a keys directory holding both keys, a
+#      candidate mixing key ids is refused by the smoke, and a keys directory without the new key is refused.
 # Needs Docker. Leaves no artifacts in the repository (dist/ is ignored) and nothing on the stand-in after `down`.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -71,5 +73,33 @@ if tests/integration/smoke.sh --manifest "$out2/candidate.json" --artifacts "$ou
   fail "smoke passed with a foreign key"
 fi
 pass "smoke refuses artifacts under a foreign verification key"
+
+echo "### 5. key rotation (second key pair, key id governance-policies-2)"
+out3="$run_dir/run3"; out4="$run_dir/run4"
+openssl genrsa -out "$work/next.pem" 3072 2>/dev/null
+openssl rsa -in "$work/next.pem" -pubout -out "$work/next.pub" 2>/dev/null
+mkdir -p "$work/keys" "$work/keys-old"
+cp "$work/signing.pub" "$work/keys/governance-policies.pem"; cp "$work/next.pub" "$work/keys/governance-policies-2.pem"
+cp "$work/signing.pub" "$work/keys-old/governance-policies.pem"
+scripts/build-release.sh --suffix "$day.3-$sha" --signing-key "$work/next.pem" --key-id governance-policies-2 --bundles naming --out "$out3"
+scripts/release-manifest.sh --artifacts "$out3" --out "$out3/candidate.json" --previous "$out2/candidate.json" --base-url "$base_url" --source candidate
+scripts/check-schemas.sh --release "$out3/candidate.json" >/dev/null && pass "manifest with per-bundle key ids matches the schema"
+ids="$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(" ".join(sorted({b.get("keyId","none") for b in m["bundles"].values()})))' "$out3/candidate.json")"
+[ "$ids" = "governance-policies governance-policies-2" ] && pass "incremental candidate records both key ids ($ids)" || fail "unexpected key ids: $ids"
+scripts/assemble-release.sh --manifest "$out3/candidate.json" --artifacts "$out3"
+if tests/integration/smoke.sh --manifest "$out3/candidate.json" --artifacts "$out3" --verification-keys "$work/keys" --port 18188 > "$work/mixed.log" 2>&1; then
+  cat "$work/mixed.log"; fail "smoke accepted a candidate mixing key ids"
+fi
+grep -q "mixes signing key ids" "$work/mixed.log" && pass "candidate mixing key ids is refused by the smoke" || { cat "$work/mixed.log"; fail "unexpected mixed-key failure"; }
+scripts/build-release.sh --suffix "$day.4-$sha" --signing-key "$work/next.pem" --key-id governance-policies-2 --bundles all --out "$out4"
+scripts/release-manifest.sh --artifacts "$out4" --out "$out4/candidate.json" --previous "$out3/candidate.json" --base-url "$base_url" --source candidate
+ids="$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(" ".join(sorted({b.get("keyId","none") for b in m["bundles"].values()})))' "$out4/candidate.json")"
+[ "$ids" = "governance-policies-2" ] && pass "full build under the new key: every bundle carries governance-policies-2" || fail "unexpected key ids: $ids"
+tests/integration/smoke.sh --manifest "$out4/candidate.json" --artifacts "$out4" --verification-keys "$work/keys" --port 18189
+pass "smoke picks governance-policies-2.pem from the keys directory"
+if tests/integration/smoke.sh --manifest "$out4/candidate.json" --artifacts "$out4" --verification-keys "$work/keys-old" --port 18190 > "$work/nokey.log" 2>&1; then
+  fail "smoke passed without the new key"
+fi
+grep -q "no verification key for key id 'governance-policies-2'" "$work/nokey.log" && pass "keys directory without the new key is refused" || { cat "$work/nokey.log"; fail "unexpected missing-key failure"; }
 echo
-echo "publish-local OK: $rel1 then $rel2 on $base_url (data in $work/artifactory)"
+echo "publish-local OK: $rel1 then $rel2 on $base_url, rotation candidates built under governance-policies-2 (data in $work/artifactory)"

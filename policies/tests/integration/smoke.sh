@@ -4,24 +4,42 @@
 #   - /health?bundles is 200 and data.governance.core.ready is true,
 #   - the revisions OPA reports (data.system.bundles) are exactly the manifest's revisions,
 #   - every tests/fixtures/inputs/*.json posted to data.governance.core.decision equals tests/fixtures/expected/*.json.
-#   smoke.sh --manifest FILE --artifacts DIR --verification-key PUBLIC.pem [--port 18181] [--keyid governance-policies]
+#   smoke.sh --manifest FILE --artifacts DIR (--verification-key PUBLIC.pem | --verification-keys DIR) [--port 18181] [--keyid ID]
+# The key id defaults to the one the manifest's bundles declare (keyId, written from the signature claims by
+# scripts/release-manifest.sh), or governance-policies for manifests that predate key ids. `opa run` verifies every
+# bundle with one key, so a manifest mixing key ids is refused here: publish all bundles under the new key instead.
+# --verification-keys DIR picks DIR/<key id>.pem, so one directory can hold the current and the previous key.
 # Uses the opa binary when scripts/opa.sh resolves to native, otherwise the pinned Docker image with the port published
 # on 127.0.0.1 only.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 OPA=scripts/opa.sh
-manifest="" artifacts="" pubkey="" port=18181 keyid="governance-policies"
+manifest="" artifacts="" pubkey="" keys_dir="" port=18181 keyid=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --manifest) manifest="$2"; shift 2 ;;
     --artifacts) artifacts="$2"; shift 2 ;;
     --verification-key) pubkey="$2"; shift 2 ;;
+    --verification-keys) keys_dir="$2"; shift 2 ;;
     --port) port="$2"; shift 2 ;;
     --keyid) keyid="$2"; shift 2 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$manifest" ] && [ -n "$artifacts" ] && [ -n "$pubkey" ] || { echo "usage: $0 --manifest FILE --artifacts DIR --verification-key PUB [--port N]" >&2; exit 2; }
+[ -n "$manifest" ] && [ -n "$artifacts" ] && { [ -n "$pubkey" ] || [ -n "$keys_dir" ]; } || { echo "usage: $0 --manifest FILE --artifacts DIR (--verification-key PUB | --verification-keys DIR) [--port N] [--keyid ID]" >&2; exit 2; }
+if [ -z "$keyid" ]; then
+  keyid="$(python3 -c '
+import json, sys
+ids = {b.get("keyId") for b in json.load(open(sys.argv[1]))["bundles"].values()} - {None}
+if len(ids) > 1:
+    sys.exit("manifest mixes signing key ids %s; the smoke verifies with one key: publish every bundle under the new key (publish.yml with bundles=all)" % sorted(ids))
+print(ids.pop() if ids else "governance-policies")' "$manifest")" || exit 1
+fi
+if [ -n "$keys_dir" ]; then
+  pubkey="$keys_dir/$keyid.pem"
+  [ -f "$pubkey" ] || { echo "no verification key for key id '$keyid' ($pubkey missing; keys present: $(ls "$keys_dir" 2>/dev/null | tr '\n' ' '))" >&2; exit 1; }
+fi
+echo "verification key id: $keyid ($pubkey)"
 revisions=()
 bundle_args=()
 while IFS= read -r r; do

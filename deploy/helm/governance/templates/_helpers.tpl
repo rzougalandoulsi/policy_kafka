@@ -89,9 +89,20 @@ Validated here so a broken promotion fails `helm template`, never a pod.
 {{- (include "governance.release" . | fromJson).releaseId -}}
 {{- end -}}
 
-{{/* The OPA sidecar configuration (plan section 11.3), rendered from the release file and the Artifactory values. */}}
+{{/*
+The OPA sidecar configuration (plan section 11.3), rendered from the release file and the Artifactory values.
+Each bundle is verified with the key id its release entry names (keyId, written from the signature claims by the
+policy repository) or, for entries without one, signing.keyId. Every id must have a key under `keys`, so a release
+signed with a key this chart does not trust fails `helm template` instead of producing pods that never become ready.
+*/}}
 {{- define "governance.opaConfig" -}}
 {{- $release := include "governance.release" . | fromJson -}}
+{{- range $name := list "core" "manifests" "naming" "quotas" "resources" "changes" -}}
+{{- $keyId := default $.Values.signing.keyId (index $release.bundles $name).keyId -}}
+{{- if and (ne $keyId $.Values.signing.keyId) (not (hasKey $.Values.signing.additionalKeys $keyId)) -}}
+{{- fail (printf "bundle %s of release %s is signed with key id %q, which is neither signing.keyId nor listed under signing.additionalKeys" $name $release.releaseId $keyId) -}}
+{{- end -}}
+{{- end -}}
 services:
   artifactory:
     url: {{ printf "%s/%s" (trimSuffix "/" .Values.artifactory.url) .Values.artifactory.repositoryKey | quote }}
@@ -106,7 +117,8 @@ services:
 {{- end }}
 bundles:
 {{- range $name := list "core" "manifests" "naming" "quotas" "resources" "changes" }}
-{{- $revision := (index $release.bundles $name).revision }}
+{{- $bundle := index $release.bundles $name }}
+{{- $revision := $bundle.revision }}
   {{ $name }}:
     service: artifactory
     resource: {{ printf "%s/%s/%s.tar.gz" $name $revision $revision | quote }}
@@ -115,7 +127,7 @@ bundles:
       min_delay_seconds: {{ $.Values.opa.polling.minDelaySeconds }}
       max_delay_seconds: {{ $.Values.opa.polling.maxDelaySeconds }}
     signing:
-      keyid: {{ $.Values.signing.keyId | quote }}
+      keyid: {{ default $.Values.signing.keyId $bundle.keyId | quote }}
 {{- end }}
 keys:
   {{ .Values.signing.keyId }}:

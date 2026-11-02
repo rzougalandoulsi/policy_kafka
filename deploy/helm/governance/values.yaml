@@ -38,12 +38,14 @@ artifactory:
   caBundleConfigMap: ""
   responseHeaderTimeoutSeconds: 30
 
-# Bundle signature verification (mandatory in release mode). Public key of the key pair Workflow B signs with.
+# Bundle signature verification (mandatory in release mode). keyId/publicKey is the key pair Workflow B currently
+# signs with. Each bundle of the release file is verified with the key id recorded in its entry (keyId), falling back
+# to keyId below; every id a release names must be present here or `helm template` fails. During a key rotation the
+# previous public key stays under additionalKeys until no promoted release references it (docs/runbook.md).
 signing:
   keyId: governance-policies
-  # PEM public key; a rotation lists the new key under additionalKeys until every published revision uses it.
   publicKey: ""                                             # [A] required: -----BEGIN PUBLIC KEY----- ...
-  additionalKeys: {}                                        # keyId -> PEM
+  additionalKeys: {}                                        # keyId -> PEM, e.g. governance-policies-2025: "-----BEGIN PUBLIC KEY-----..."
 
 # The promoted policy release (contracts/release-manifest.schema.json). Defaults to releases/<environment>.json.
 release:

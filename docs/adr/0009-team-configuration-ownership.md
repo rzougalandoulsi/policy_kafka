@@ -23,3 +23,6 @@ was confirmed (plan assumption 4).
 - The old `TEAM_PREFIX_REQUIRED` policy is replaced by `AUTHORIZED_PREFIX_REQUIRED` over `input.team.authorizedPrefixes`;
   exceptions scoped to the old id must be re-created.
 - Prefixes are stored lower-cased and matched case-insensitively.
+
+## Update 2026-11-02 (Phase 8 review)
+Implemented as decided. No enterprise team registry has been confirmed (plan assumption 4), so no sync job exists and every row is `source = governance` or absent (`default`). The decision is unchanged; it will be revisited only when a registry owner is named. The admin console's Teams pages and `GET /api/v1/admin/teams/{id}/usage` are the operational surface (`docs/runbook.md`).

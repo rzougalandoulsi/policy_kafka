@@ -14,8 +14,8 @@ violations contains h.violation("RBAC_ROLE_ALLOWED", "DENY", msg, "RBAC", key(b)
 # RBAC_ENV_RESTRICTED: environment-specific role restrictions (bypassable).
 violations contains h.violation("RBAC_ENV_RESTRICTED", "DENY", msg, "RBAC", key(b), true) if {
 	h.stage_request
-	some b in h.bindings
 	allowed := h.config.rbac.environmentRoles[h.env]
+	some b in h.bindings
 	not b.role in allowed
 	not b.role in h.config.rbac.forbiddenRoles
 	msg := sprintf("role '%s' is not permitted in environment '%s'", [b.role, h.env])
@@ -26,8 +26,7 @@ violations contains h.violation("RBAC_ENV_RESTRICTED", "DENY", msg, "RBAC", key(
 violations contains h.violation("RBAC_TEAM_ROLE_ALLOWED", "DENY", msg, "RBAC", key(b), true) if {
 	h.stage_request
 	some b in h.bindings
-	allowed := team_allowed_roles
-	not b.role in allowed
+	not b.role in team_allowed_roles
 	not b.role in h.config.rbac.forbiddenRoles
 	msg := sprintf("team '%s' may not grant role '%s'", [h.team_id, b.role])
 }

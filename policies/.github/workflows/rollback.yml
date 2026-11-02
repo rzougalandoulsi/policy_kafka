@@ -54,8 +54,22 @@ jobs:
         run: |
           [[ "${{ github.event.inputs.targetReleaseId }}" =~ ^rel-[0-9a-f]{12}$ ]] || { echo "::error::targetReleaseId must look like rel-xxxxxxxxxxxx"; exit 1; }
           test -n "${{ github.event.inputs.reason }}" || { echo "::error::a reason is required"; exit 1; }
-          test -n "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" -a -n "${{ vars.APP_REPOSITORY }}" || { echo "::error::OPA_BUNDLE_SIGNING_PUBLIC_KEY / APP_REPOSITORY are not set"; exit 1; }
-          printf '%s\n' "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" > "$RUNNER_TEMP/public.pem"
+          test -n "${{ vars.APP_REPOSITORY }}" || { echo "::error::repository variable APP_REPOSITORY is not set"; exit 1; }
+      - name: Verification keys (current key and, during a rotation, the previous one)
+        env:
+          KEY_ID: ${{ vars.OPA_BUNDLE_SIGNING_KEY_ID || 'governance-policies' }}
+          KEY_PEM: ${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}
+          PREVIOUS_KEY_ID: ${{ vars.OPA_BUNDLE_SIGNING_KEY_ID_PREVIOUS }}
+          PREVIOUS_KEY_PEM: ${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY_PREVIOUS }}
+        run: |
+          test -n "$KEY_PEM" || { echo "::error::repository variable OPA_BUNDLE_SIGNING_PUBLIC_KEY is not set"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$KEY_PEM" > "$RUNNER_TEMP/keys/$KEY_ID.pem"
+          if [ -n "$PREVIOUS_KEY_PEM" ]; then
+            test -n "$PREVIOUS_KEY_ID" || { echo "::error::OPA_BUNDLE_SIGNING_KEY_ID_PREVIOUS must name the previous key"; exit 1; }
+            printf '%s\n' "$PREVIOUS_KEY_PEM" > "$RUNNER_TEMP/keys/$PREVIOUS_KEY_ID.pem"
+          fi
+          for k in "$RUNNER_TEMP"/keys/*.pem; do echo "trusted key id: $(basename "$k" .pem)"; done
       - name: Authenticate to Artifactory (JFrog OIDC)
         id: jfrog
         if: vars.JFROG_OIDC_PROVIDER_NAME != ''
@@ -78,7 +92,7 @@ jobs:
           mkdir -p dist/app-repo
           scripts/promote.sh --rollback --release-id "${{ github.event.inputs.targetReleaseId }}" --environment "${{ github.event.inputs.environment }}" \
             --source "${{ github.event.inputs.environment == 'dev' && 'candidates' || github.event.inputs.environment == 'staging' && 'dev' || 'staging' }}" \
-            --verification-key "$RUNNER_TEMP/public.pem" --app-repo dist/app-repo --actor "${{ github.actor }}" --reason "${{ github.event.inputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"
+            --verification-keys "$RUNNER_TEMP/keys" --app-repo dist/app-repo --actor "${{ github.actor }}" --reason "${{ github.event.inputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Open the rollback pull request in the application repository
         env:
           GH_TOKEN: ${{ secrets.APP_REPO_TOKEN }}

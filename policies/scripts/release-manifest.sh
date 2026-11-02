@@ -24,7 +24,7 @@ done
 git_sha="${git_sha:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
 git_ref="${git_ref:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)}"
 python3 - "$artifacts" "$out" "$previous" "$base_url" "$source" "$git_sha" "$git_ref" "$(tr -d '[:space:]' < OPA_VERSION)" <<'PY'
-import datetime, glob, hashlib, json, os, re, sys, tarfile
+import base64, datetime, glob, hashlib, json, os, re, sys, tarfile
 artifacts, out, previous, base_url, source, git_sha, git_ref, opa_version = sys.argv[1:9]
 names = ["core", "manifests", "naming", "quotas", "resources", "changes"]
 prev = json.load(open(previous)) if previous else {"bundles": {}}
@@ -43,11 +43,21 @@ for n in names:
                 return name
             member = next(m for m in tar.getmembers() if plain(m.name) == ".manifest")
             manifest = json.load(tar.extractfile(member))
-            signed = any(plain(m.name) == ".signatures.json" for m in tar.getmembers())
+            sig_member = next((m for m in tar.getmembers() if plain(m.name) == ".signatures.json"), None)
+            signed = sig_member is not None
+            key_id = None
+            if signed:
+                # the key id the bundle was signed under lives in the JWT claims (build-release.sh --key-id)
+                token = json.load(tar.extractfile(sig_member))["signatures"][0]
+                payload = token.split(".")[1]
+                claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+                key_id = claims.get("keyid") or manifest.get("metadata", {}).get("signing_key_id")
         if manifest.get("revision") != revision:
             sys.exit(f"{n}: file name says revision {revision} but .manifest says {manifest.get('revision')}")
         meta = manifest.get("metadata", {})
         entry = {"revision": revision, "sha256": hashlib.sha256(open(f, "rb").read()).hexdigest(), "signed": signed}
+        if key_id:
+            entry["keyId"] = key_id
         if base_url:
             entry["url"] = f"{base_url.rstrip('/')}/{n}/{revision}/{revision}.tar.gz"
         else:

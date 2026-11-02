@@ -35,15 +35,20 @@ Set `externalSecrets.enabled=true` with `secretStoreRef` and `remoteRefs` to let
 
 ## Inputs to confirm before the first deploy [A]
 Registry (`image.repository`), OPA image digest, Artifactory URL and repository key, the signing public key
-(`signing.publicKey`; rotate by adding the new key under `signing.additionalKeys` first), private CA ConfigMap, IdP
-issuer, Route hosts, router and monitoring namespace selectors, egress targets, External Secrets store. `helm template`
-fails loudly when the release file or the public key is missing. `ci/render-check-public-key.pem` is a throwaway
-public key used only by the render check; it signs nothing.
+(`signing.publicKey` under `signing.keyId`), private CA ConfigMap, IdP issuer, Route hosts, router and monitoring
+namespace selectors, egress targets, External Secrets store. `helm template` fails loudly when the release file or the
+public key is missing, when a bundle entry has no revision, and when a bundle's `keyId` is neither `signing.keyId` nor
+listed under `signing.additionalKeys`. Each bundle is verified with the key id its release entry names (written by the
+policy repository's Workflow B), so a rotation adds the new public key under `signing.additionalKeys` first and
+retires the old one when no release file references it (`docs/runbook.md`, "Signing key rotation").
+`ci/render-check-public-key.pem` is a throwaway public key used only by the render check; it signs nothing.
+`ci/release-rotation.json` is the render check's fixture for a release whose bundles were signed under two key ids.
 
 ## Operations
 - Promotion: Workflow C opens a PR that replaces `releases/<env>.json`; merging triggers `deploy.yml`, which rolls the
   pods; Workflow D verifies every pod reports the release id (`GET /api/v1/admin/policy-releases/current`).
 - Rollback: Workflow E (previous verified release file) or `helm rollback` for the application image; the two are
-  independent.
+  independent. `helm rollback` also restores the previous release file and OPA configuration immediately; Workflow E
+  must still run afterwards so that Git agrees with the cluster (`docs/runbook.md`, "Rollback procedure").
 - A pod that never becomes ready: `oc logs <pod> -c opa` (download, signature or activation error) and
   `/actuator/health/readiness` on the governance container (`policyRelease` details list the mismatching bundle).

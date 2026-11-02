@@ -20,9 +20,7 @@ contract_version := "2.0"
 
 required := ["manifests", "naming", "quotas", "resources", "changes"]
 
-bundle_contract(ns) := v if {
-	v := data.governance[ns].contract_version
-}
+bundle_contract(ns) := data.governance[ns].contract_version
 
 loaded(ns) if bundle_contract(ns)
 
@@ -30,9 +28,16 @@ major(v) := split(v, ".")[0]
 
 compatible(ns) if major(bundle_contract(ns)) == major(contract_version)
 
-missing := {ns | some ns in required; not loaded(ns)}
+missing contains ns if {
+	some ns in required
+	not loaded(ns)
+}
 
-incompatible := {ns | some ns in required; loaded(ns); not compatible(ns)}
+incompatible contains ns if {
+	some ns in required
+	loaded(ns)
+	not compatible(ns)
+}
 
 default ready := false
 
@@ -41,7 +46,10 @@ ready if {
 	count(incompatible) == 0
 }
 
-bundles := {ns: bundle_contract(ns) | some ns in required; loaded(ns)}
+bundles[ns] := bundle_contract(ns) if {
+	some ns in required
+	loaded(ns)
+}
 
 bundle_violations(ns) := vs if {
 	vs := data.governance[ns].violations
@@ -117,16 +125,19 @@ outcome := "ALLOW" if {
 }
 
 # Revisions of every bundle OPA has loaded (empty under `opa test`).
-revisions := {name: rev | some name, b in data.system.bundles; rev := b.manifest.revision}
+revisions[name] := b.manifest.revision if some name, b in data.system.bundles
 
 # Merged policy catalogue served through GET /api/v1/admin/policies (data.governance.core.policy_catalog).
 # Core must not define rules named violations/approvals/catalog itself: data.governance[ns].<name> would then
 # refer back to core and OPA rejects the composition as recursive.
 policy_catalog := array.concat(authz.catalog, [c | some ns in required; some c in bundle_catalog(ns)])
 
-catalog_ids := {p.policyId | some p in policy_catalog}
+catalog_ids contains p.policyId if some p in policy_catalog
 
-bypassable_ids := {p.policyId | some p in policy_catalog; p.bypassable == true}
+bypassable_ids contains p.policyId if {
+	some p in policy_catalog
+	p.bypassable == true
+}
 
 # Stable ordering by policyId then resourceName (sort works on arrays of comparable values; use keys).
 sorted(set) := [set_by_key[k] | some k in sort([k | some k, _ in set_by_key])] if {

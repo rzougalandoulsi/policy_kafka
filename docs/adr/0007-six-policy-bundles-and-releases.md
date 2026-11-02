@@ -14,3 +14,10 @@ One bundle (`governance`) held every policy. The target platform needs independe
 ## Consequences
 - Promotion in deployed environments will move a release manifest, not a bundle (see the platform plan, Artifactory phase).
 - `MAX_PARTITIONS_PER_PLAN` lives in `quotas` until projected team usage arrives with input contract 2.0; `manifests` has no rules yet but is part of the required set so the tooling exercises all six roots from day one.
+
+## Update 2026-11-02 (Phase 8 review)
+Implemented as decided; what differs from the text above or was decided later:
+- The catalogue holds 20 policies (16 bypassable) since input contract 2.0: `manifests` gained `RESOURCE_OWNED_BY_OTHER_REPOSITORY` and `REPOSITORY_OWNED_BY_OTHER_TEAM`, `quotas` gained `TEAM_QUOTA_EXCEEDED`, `TEAM_PREFIX_REQUIRED` became `AUTHORIZED_PREFIX_REQUIRED` (ADR 0009). `MAX_PARTITIONS_PER_PLAN` stays in `quotas` as a plan guard.
+- Core checks the contract **major of every bundle against its own**, so a major bump cannot ship "domain bundles first": the six bundles move in one release after Governance accepts both majors, then Governance drops the old major (`docs/runbook.md`, "Contract major bump").
+- The Regal baseline introduced with the policy repository layout (Phase 3) was burned down in Phase 8 with behaviour-neutral refactors (set and object comprehensions became partial rules, loop-invariant expressions moved before their loops, a repeated computation and a pointless reassignment were removed); the 8 fixtures' expected decisions did not change and the 79 Rego tests pass. What remains in `.regal/config.yaml` is structural (directory layout versus roots, entrypoints passed at build time, line length, the contract name `approvals` in package `changes.approval`).
+- Authoring rules are written down in `policies/docs/bundle-authoring.md`; the contract in `policies/docs/contract.md`.

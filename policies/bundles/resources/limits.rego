@@ -5,8 +5,9 @@ import data.governance.resources.lib as h
 # MAX_TOPICS_PER_MANIFEST (bypassable)
 violations contains h.violation("MAX_TOPICS_PER_MANIFEST", "DENY", msg, "MANIFEST", input.manifest.repositoryId, true) if {
 	h.stage_request
-	count(input.manifest.topics) > h.limit("maxTopicsPerManifest")
-	msg := sprintf("manifest declares %d topics, maximum is %d", [count(input.manifest.topics), h.limit("maxTopicsPerManifest")])
+	declared := count(input.manifest.topics)
+	declared > h.limit("maxTopicsPerManifest")
+	msg := sprintf("manifest declares %d topics, maximum is %d", [declared, h.limit("maxTopicsPerManifest")])
 }
 
 # MAX_PARTITIONS_PER_TOPIC (bypassable)

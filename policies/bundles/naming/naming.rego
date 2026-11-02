@@ -20,10 +20,6 @@ violations contains h.violation("AUTHORIZED_PREFIX_REQUIRED", "DENY", msg, "TOPI
 	msg := sprintf("topic '%s' must start with an authorised prefix of team '%s' (%s)", [t.name, h.team_id, prefix_list])
 }
 
-prefix_list := "none configured" if count(h.team_prefixes) == 0
-
-prefix_list := concat(", ", h.team_prefixes) if count(h.team_prefixes) > 0
-
 # ENV_NAME_RESTRICTION: environment-specific forbidden name patterns (bypassable).
 violations contains h.violation("ENV_NAME_RESTRICTION", "DENY", msg, "TOPIC", t.name, true) if {
 	h.stage_request
@@ -32,6 +28,10 @@ violations contains h.violation("ENV_NAME_RESTRICTION", "DENY", msg, "TOPIC", t.
 	regex.match(pattern, t.name)
 	msg := sprintf("topic '%s' is not allowed in environment '%s' (matches %s)", [t.name, h.env, pattern])
 }
+
+prefix_list := "none configured" if count(h.team_prefixes) == 0
+
+prefix_list := concat(", ", h.team_prefixes) if count(h.team_prefixes) > 0
 
 # ---- bundle contract
 

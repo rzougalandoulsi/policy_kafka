@@ -6,7 +6,8 @@
 # releases/<env>/verified/<releaseId>.json, which Workflow E requires of a rollback target.
 #
 # [A] inputs: repository variables ARTIFACTORY_URL, ARTIFACTORY_OPA_BUNDLES_REPOSITORY, JFROG_PLATFORM_URL,
-#   JFROG_OIDC_PROVIDER_NAME, JFROG_OIDC_AUDIENCE, OPA_BUNDLE_SIGNING_PUBLIC_KEY; environment "verify-<env>" variables
+#   JFROG_OIDC_PROVIDER_NAME, JFROG_OIDC_AUDIENCE, OPA_BUNDLE_SIGNING_PUBLIC_KEY (+ OPA_BUNDLE_SIGNING_KEY_ID, and the
+#   _PREVIOUS pair during a key rotation); environment "verify-<env>" variables
 #   OPENSHIFT_SERVER, OPENSHIFT_NAMESPACE and secrets OPENSHIFT_TOKEN (read + exec on the governance pods),
 #   ARTIFACTORY_VERIFY_TOKEN (fallback, read + deploy on releases/**), SLACK_WEBHOOK_URL (optional).
 name: verify
@@ -69,7 +70,21 @@ jobs:
           if [ -n "$OIDC_TOKEN" ]; then echo "::add-mask::$OIDC_TOKEN"; echo "ARTIFACTORY_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
           elif [ -n "$FALLBACK_TOKEN" ]; then echo "ARTIFACTORY_TOKEN=$FALLBACK_TOKEN" >> "$GITHUB_ENV"
           else echo "::error::no Artifactory credentials"; exit 1; fi
-          printf '%s\n' "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" > "$RUNNER_TEMP/public.pem"
+      - name: Verification keys (current key and, during a rotation, the previous one)
+        env:
+          KEY_ID: ${{ vars.OPA_BUNDLE_SIGNING_KEY_ID || 'governance-policies' }}
+          KEY_PEM: ${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}
+          PREVIOUS_KEY_ID: ${{ vars.OPA_BUNDLE_SIGNING_KEY_ID_PREVIOUS }}
+          PREVIOUS_KEY_PEM: ${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY_PREVIOUS }}
+        run: |
+          test -n "$KEY_PEM" || { echo "::error::repository variable OPA_BUNDLE_SIGNING_PUBLIC_KEY is not set"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$KEY_PEM" > "$RUNNER_TEMP/keys/$KEY_ID.pem"
+          if [ -n "$PREVIOUS_KEY_PEM" ]; then
+            test -n "$PREVIOUS_KEY_ID" || { echo "::error::OPA_BUNDLE_SIGNING_KEY_ID_PREVIOUS must name the previous key"; exit 1; }
+            printf '%s\n' "$PREVIOUS_KEY_PEM" > "$RUNNER_TEMP/keys/$PREVIOUS_KEY_ID.pem"
+          fi
+          for k in "$RUNNER_TEMP"/keys/*.pem; do echo "trusted key id: $(basename "$k" .pem)"; done
       - name: Log in to OpenShift [A]
         uses: redhat-actions/oc-login@2a1614bc977c054c8786c8e35fc9534bd0ddc156 # v2.0.1
         with:
@@ -86,7 +101,7 @@ jobs:
           rid="${{ steps.active.outputs.release-id }}"
           mkdir -p dist/verify
           curl -sSf -H "Authorization: Bearer $ARTIFACTORY_TOKEN" -o "dist/verify/$rid.json" "$ARTIFACTORY_URL/$ARTIFACTORY_REPOSITORY/releases/${{ matrix.environment }}/$rid.json"
-          scripts/verify-artifacts.sh --manifest "dist/verify/$rid.json" --verification-key "$RUNNER_TEMP/public.pem" | tee -a "$GITHUB_STEP_SUMMARY"
+          scripts/verify-artifacts.sh --manifest "dist/verify/$rid.json" --verification-keys "$RUNNER_TEMP/keys" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Mark the promotion verified
         run: scripts/mark-verified.sh --release-id "${{ steps.active.outputs.release-id }}" --environment "${{ matrix.environment }}" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Notify

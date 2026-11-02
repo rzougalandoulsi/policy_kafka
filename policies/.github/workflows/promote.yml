@@ -4,7 +4,9 @@
 # (auto-merged for dev). Merging rolls the pods; Workflow D verifies the environment afterwards.
 #
 # [A] inputs (names only): repository variables ARTIFACTORY_URL, ARTIFACTORY_OPA_BUNDLES_REPOSITORY, JFROG_PLATFORM_URL,
-#   JFROG_OIDC_PROVIDER_NAME, JFROG_OIDC_AUDIENCE, OPA_BUNDLE_SIGNING_PUBLIC_KEY (PEM, public), APP_REPOSITORY
+#   JFROG_OIDC_PROVIDER_NAME, JFROG_OIDC_AUDIENCE, OPA_BUNDLE_SIGNING_PUBLIC_KEY (PEM, public) with
+#   OPA_BUNDLE_SIGNING_KEY_ID (default governance-policies) and, during a key rotation, the previous pair
+#   OPA_BUNDLE_SIGNING_PUBLIC_KEY_PREVIOUS / OPA_BUNDLE_SIGNING_KEY_ID_PREVIOUS; APP_REPOSITORY
 #   (ORG/policy_kafka); environment "promote-<env>" secrets ARTIFACTORY_PROMOTE_TOKEN (fallback) and APP_REPO_TOKEN
 #   (contents + pull requests write on the application repository). Protect promote-staging and promote-production
 #   with required reviewers.
@@ -63,9 +65,22 @@ jobs:
         run: |
           [[ "${{ github.event.inputs.releaseId }}" =~ ^rel-[0-9a-f]{12}$ ]] || { echo "::error::releaseId must look like rel-xxxxxxxxxxxx"; exit 1; }
           test -n "$ARTIFACTORY_URL" -a -n "$ARTIFACTORY_REPOSITORY" || { echo "::error::ARTIFACTORY_URL / ARTIFACTORY_OPA_BUNDLES_REPOSITORY are not set"; exit 1; }
-          test -n "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" || { echo "::error::repository variable OPA_BUNDLE_SIGNING_PUBLIC_KEY is not set"; exit 1; }
           test -n "${{ vars.APP_REPOSITORY }}" || { echo "::error::repository variable APP_REPOSITORY (ORG/policy_kafka) is not set"; exit 1; }
-          printf '%s\n' "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" > "$RUNNER_TEMP/public.pem"
+      - name: Verification keys (current key and, during a rotation, the previous one)
+        env:
+          KEY_ID: ${{ vars.OPA_BUNDLE_SIGNING_KEY_ID || 'governance-policies' }}
+          KEY_PEM: ${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}
+          PREVIOUS_KEY_ID: ${{ vars.OPA_BUNDLE_SIGNING_KEY_ID_PREVIOUS }}
+          PREVIOUS_KEY_PEM: ${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY_PREVIOUS }}
+        run: |
+          test -n "$KEY_PEM" || { echo "::error::repository variable OPA_BUNDLE_SIGNING_PUBLIC_KEY is not set"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$KEY_PEM" > "$RUNNER_TEMP/keys/$KEY_ID.pem"
+          if [ -n "$PREVIOUS_KEY_PEM" ]; then
+            test -n "$PREVIOUS_KEY_ID" || { echo "::error::OPA_BUNDLE_SIGNING_KEY_ID_PREVIOUS must name the previous key"; exit 1; }
+            printf '%s\n' "$PREVIOUS_KEY_PEM" > "$RUNNER_TEMP/keys/$PREVIOUS_KEY_ID.pem"
+          fi
+          for k in "$RUNNER_TEMP"/keys/*.pem; do echo "trusted key id: $(basename "$k" .pem)"; done
       - name: Authenticate to Artifactory (JFrog OIDC)
         id: jfrog
         if: vars.JFROG_OIDC_PROVIDER_NAME != ''
@@ -87,7 +102,7 @@ jobs:
         run: |
           mkdir -p dist/app-repo
           scripts/promote.sh --release-id "${{ github.event.inputs.releaseId }}" --environment "${{ github.event.inputs.environment }}" \
-            --source "${{ github.event.inputs.source }}" --verification-key "$RUNNER_TEMP/public.pem" \
+            --source "${{ github.event.inputs.source }}" --verification-keys "$RUNNER_TEMP/keys" \
             --app-repo dist/app-repo --actor "${{ github.actor }}" --reason "${{ github.event.inputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Open the release pull request in the application repository
         id: pr

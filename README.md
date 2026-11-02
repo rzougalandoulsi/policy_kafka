@@ -62,7 +62,8 @@ page); auditors can use `deploy/scripts/token.sh` with the dev token form. See `
 - `docs/kafka-contract.md` — topics, Avro envelopes, correlation, partitioning, idempotency
 - `docs/orchestrator-integration.md` — what the real Orchestrator must implement to join the handshake (the simulator mirrors it)
 - `docs/governance.md` — request lifecycle, decision model, policies, exceptions, approvals, dynamic policy management
-- `docs/flow-animation.html` — animated walkthrough of the handshake as a sequence diagram and as a component map (services, Postgres tables, Kafka topics, clients) that traces each scenario: happy path, hard deny, scoped exception, stage 2 approval, OPA unavailable; open the file from a checkout, GitHub shows only its source
-- `docs/runbook.md` — operations: metrics, health, dead letters, OPA revision diagnostics, failure modes
+- `docs/flow-animation.html` — animated walkthrough of the handshake as a sequence diagram and as a component map (services, Postgres tables, Kafka topics, clients, and the policy release supply chain: policy repository workflows, Artifactory, release file, OPA sidecar) that traces each scenario: happy path, hard deny, scoped exception, stage 2 approval, OPA unavailable; open the file from a checkout, GitHub shows only its source
+- `docs/runbook.md` — operations, the single entry point: metrics, health, dead letters, failure modes, release-mode operations (Artifactory outage, signature failure, a promotion that never becomes ready, rollback, signing key rotation, contract major bump)
+- `policies/docs/` — the policy repository's own guides: bundle authoring, contract, Workflows A to E operations, extraction checklist
 - `docs/admin-ui.md` — the admin console: pages, roles, sign-in and proxy setup, configuration, troubleshooting
 - `docs/adr/` — architecture decision records

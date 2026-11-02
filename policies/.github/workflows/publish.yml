@@ -8,6 +8,8 @@
 #                          JFROG_PLATFORM_URL                  JFrog platform URL (ARTIFACTORY_URL without /artifactory)
 #                          JFROG_OIDC_PROVIDER_NAME            OIDC integration name configured in JFrog for this GitHub org
 #                          JFROG_OIDC_AUDIENCE                 audience of that integration (optional)
+#                          OPA_BUNDLE_SIGNING_KEY_ID           id of the signing key pair (default governance-policies);
+#                                                              changed together with the key during a rotation
 #   Environment "artifactory-publish" secrets:
 #                          OPA_BUNDLE_SIGNING_KEY              PEM private key (RS256); custody per plan assumption 6
 #                          ARTIFACTORY_PUBLISH_TOKEN           fallback only: scoped, expiring token with deploy-without-
@@ -41,7 +43,7 @@ concurrency:
 env:
   ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
   ARTIFACTORY_REPOSITORY: ${{ vars.ARTIFACTORY_OPA_BUNDLES_REPOSITORY }}
-  SIGNING_KEY_ID: governance-policies
+  SIGNING_KEY_ID: ${{ vars.OPA_BUNDLE_SIGNING_KEY_ID || 'governance-policies' }}
   PYTHON_PINS: "jsonschema==4.26.0 rfc3339-validator==0.1.4"
 
 jobs:
@@ -148,14 +150,14 @@ jobs:
           umask 077; mkdir -p "$RUNNER_TEMP/signing"
           printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/signing/key.pem"
           openssl pkey -in "$RUNNER_TEMP/signing/key.pem" -pubout -out "$RUNNER_TEMP/signing/public.pem"
-          echo "signing key fingerprint: $(openssl pkey -pubin -in "$RUNNER_TEMP/signing/public.pem" -outform DER | sha256sum | cut -c1-16)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "signing key id: $SIGNING_KEY_ID, fingerprint: $(openssl pkey -pubin -in "$RUNNER_TEMP/signing/public.pem" -outform DER | sha256sum | cut -c1-16)" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Build, sign, checksum (revision <bundle>-<yyyyMMdd>.<run_number>-<short sha>)
         if: steps.changed.outputs.bundles != ''
         run: |
           suffix="$(date -u +%Y%m%d).${{ github.run_number }}-$(git rev-parse --short HEAD)"
           echo "SUFFIX=$suffix" >> "$GITHUB_ENV"
-          scripts/build-release.sh --suffix "$suffix" --signing-key "$RUNNER_TEMP/signing/key.pem" \
+          scripts/build-release.sh --suffix "$suffix" --signing-key "$RUNNER_TEMP/signing/key.pem" --key-id "$SIGNING_KEY_ID" \
             --bundles "${{ steps.changed.outputs.bundles }}" --out dist/release \
             --git-sha "${{ github.sha }}" --git-ref "${{ github.ref }}"
 
@@ -176,9 +178,11 @@ jobs:
         if: steps.changed.outputs.bundles != ''
         run: scripts/assemble-release.sh --manifest dist/release/candidate.json --artifacts dist/release
 
+      # The key id comes from the manifest: unchanged bundles keep the key they were signed with, so a candidate that
+      # mixes key ids fails here. After a key rotation run this workflow once with bundles=all.
       - name: Smoke (opa run --server with signature verification, fixtures, ready == true)
         if: steps.changed.outputs.bundles != ''
-        run: tests/integration/smoke.sh --manifest dist/release/candidate.json --artifacts dist/release --verification-key "$RUNNER_TEMP/signing/public.pem" --keyid "$SIGNING_KEY_ID"
+        run: tests/integration/smoke.sh --manifest dist/release/candidate.json --artifacts dist/release --verification-key "$RUNNER_TEMP/signing/public.pem"
 
       - name: Publish (HEAD pre-check, upload, properties, verify by download)
         if: steps.changed.outputs.bundles != ''

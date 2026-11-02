@@ -9,7 +9,7 @@ PLAN_AUTHORIZED → COMPLETED | FAILED | STALE_PLAN | REJECTED_BY_ORCHESTRATOR
 ```
 `RequestLifecycle` is the single source of legal transitions; `manifest_request.version` provides optimistic locking; every transition is appended to `request_status_history`.
 
-For an animated walkthrough of these transitions, open [`flow-animation.html`](flow-animation.html) from a checkout (a single self-contained page; GitHub shows only its source). It offers a sequence diagram and a component map of the running services, database tables and Kafka topics; both trace the same scenarios. Keep its scenario data in step with `RequestLifecycle`, `GovernanceTypes.avsc`, `decision.rego` and `catalog.rego`.
+For an animated walkthrough of these transitions, open [`flow-animation.html`](flow-animation.html) from a checkout (a single self-contained page; GitHub shows only its source). It offers a sequence diagram and a component map of the running services, database tables, Kafka topics and, since Phase 8, the policy release supply chain of deployed environments (policy repository workflows, Artifactory, release file, OPA sidecar); both views trace the same scenarios. Keep its scenario data in step with `RequestLifecycle`, `GovernanceTypes.avsc`, `decision.rego` and `catalog.rego`.
 
 ## REST API (OpenAPI at `/v3/api-docs`, UI at `/swagger-ui.html`)
 | Endpoint | Auth | Notes |
