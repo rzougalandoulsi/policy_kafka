@@ -1,0 +1,108 @@
+# Workflow C: promotes a published release to dev, staging or production. Nothing is rebuilt: the six artifacts are
+# re-verified (existence, checksum, signature, fixtures), an immutable promotion record is written to Artifactory,
+# and a pull request changing deploy/helm/governance/releases/<env>.json is opened in the application repository
+# (auto-merged for dev). Merging rolls the pods; Workflow D verifies the environment afterwards.
+#
+# [A] inputs (names only): repository variables ARTIFACTORY_URL, ARTIFACTORY_OPA_BUNDLES_REPOSITORY, JFROG_PLATFORM_URL,
+#   JFROG_OIDC_PROVIDER_NAME, JFROG_OIDC_AUDIENCE, OPA_BUNDLE_SIGNING_PUBLIC_KEY (PEM, public), APP_REPOSITORY
+#   (ORG/policy_kafka); environment "promote-<env>" secrets ARTIFACTORY_PROMOTE_TOKEN (fallback) and APP_REPO_TOKEN
+#   (contents + pull requests write on the application repository). Protect promote-staging and promote-production
+#   with required reviewers.
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseId:
+        description: "Release id (rel-xxxxxxxxxxxx) from a candidate or from the source environment"
+        required: true
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [dev, staging, production]
+      source:
+        description: "Where the release comes from: candidates (Workflow B), dev or staging (the previous environment)"
+        required: true
+        type: choice
+        options: [candidates, dev, staging]
+        default: candidates
+      reason:
+        description: "Why (recorded in the promotion event and the pull request)"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
+  ARTIFACTORY_REPOSITORY: ${{ vars.ARTIFACTORY_OPA_BUNDLES_REPOSITORY }}
+
+jobs:
+  promote:
+    name: promote ${{ github.event.inputs.releaseId }} to ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: promote-${{ github.event.inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned OPA (signature verification and fixture smoke)
+        run: |
+          scripts/install-opa.sh "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Check inputs and configuration
+        run: |
+          [[ "${{ github.event.inputs.releaseId }}" =~ ^rel-[0-9a-f]{12}$ ]] || { echo "::error::releaseId must look like rel-xxxxxxxxxxxx"; exit 1; }
+          test -n "$ARTIFACTORY_URL" -a -n "$ARTIFACTORY_REPOSITORY" || { echo "::error::ARTIFACTORY_URL / ARTIFACTORY_OPA_BUNDLES_REPOSITORY are not set"; exit 1; }
+          test -n "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" || { echo "::error::repository variable OPA_BUNDLE_SIGNING_PUBLIC_KEY is not set"; exit 1; }
+          test -n "${{ vars.APP_REPOSITORY }}" || { echo "::error::repository variable APP_REPOSITORY (ORG/policy_kafka) is not set"; exit 1; }
+          printf '%s\n' "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" > "$RUNNER_TEMP/public.pem"
+      - name: Authenticate to Artifactory (JFrog OIDC)
+        id: jfrog
+        if: vars.JFROG_OIDC_PROVIDER_NAME != ''
+        uses: jfrog/setup-jfrog-cli@6ed45ef1a24199bd4c94d3fd55a7e8cb7e45985d # v5.3.2
+        env:
+          JF_URL: ${{ vars.JFROG_PLATFORM_URL }}
+        with:
+          oidc-provider-name: ${{ vars.JFROG_OIDC_PROVIDER_NAME }}
+          oidc-audience: ${{ vars.JFROG_OIDC_AUDIENCE }}
+      - name: Select the access token
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+          FALLBACK_TOKEN: ${{ secrets.ARTIFACTORY_PROMOTE_TOKEN }}
+        run: |
+          if [ -n "$OIDC_TOKEN" ]; then echo "::add-mask::$OIDC_TOKEN"; echo "ARTIFACTORY_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
+          elif [ -n "$FALLBACK_TOKEN" ]; then echo "ARTIFACTORY_TOKEN=$FALLBACK_TOKEN" >> "$GITHUB_ENV"
+          else echo "::error::no Artifactory credentials (OIDC provider or ARTIFACTORY_PROMOTE_TOKEN)"; exit 1; fi
+      - name: Verify and record the promotion (no rebuild)
+        run: |
+          mkdir -p dist/app-repo
+          scripts/promote.sh --release-id "${{ github.event.inputs.releaseId }}" --environment "${{ github.event.inputs.environment }}" \
+            --source "${{ github.event.inputs.source }}" --verification-key "$RUNNER_TEMP/public.pem" \
+            --app-repo dist/app-repo --actor "${{ github.actor }}" --reason "${{ github.event.inputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Open the release pull request in the application repository
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
+        run: |
+          scripts/app-repo-pr.sh --repo "${{ vars.APP_REPOSITORY }}" --environment "${{ github.event.inputs.environment }}" \
+            --release-id "${{ github.event.inputs.releaseId }}" --file "dist/app-repo/deploy/helm/governance/releases/${{ github.event.inputs.environment }}.json" \
+            --kind promote --reason "${{ github.event.inputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Promotion record
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: promotion-${{ github.event.inputs.environment }}-${{ github.event.inputs.releaseId }}
+          path: |
+            dist/promote/${{ github.event.inputs.environment }}/${{ github.event.inputs.releaseId }}/record.json
+            dist/promote/${{ github.event.inputs.environment }}/${{ github.event.inputs.releaseId }}/event.json
+            dist/app-repo/
+          retention-days: 90

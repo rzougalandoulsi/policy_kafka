@@ -1,0 +1,88 @@
+# Workflow E: restores a previously promoted and verified release in an environment. No artifact is touched: the
+# target's record and verification marker must exist in Artifactory, its artifacts are re-verified, a rollback
+# event is written, and the same pull request mechanics as Workflow C point the application repository's
+# release file at the target (never auto-merged). Governance's own fail-closed behaviour covers the window.
+#
+# [A] inputs: as promote.yml, with environment "rollback-<env>" (required reviewers) holding ARTIFACTORY_PROMOTE_TOKEN
+#   (fallback) and APP_REPO_TOKEN.
+name: rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to roll back"
+        required: true
+        type: choice
+        options: [dev, staging, production]
+      targetReleaseId:
+        description: "Release id to restore (must have been promoted to this environment and verified by Workflow D)"
+        required: true
+      reason:
+        description: "Required: incident or reason"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
+  ARTIFACTORY_REPOSITORY: ${{ vars.ARTIFACTORY_OPA_BUNDLES_REPOSITORY }}
+
+jobs:
+  rollback:
+    name: roll back ${{ github.event.inputs.environment }} to ${{ github.event.inputs.targetReleaseId }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: rollback-${{ github.event.inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned OPA
+        run: |
+          scripts/install-opa.sh "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Check inputs and configuration
+        run: |
+          [[ "${{ github.event.inputs.targetReleaseId }}" =~ ^rel-[0-9a-f]{12}$ ]] || { echo "::error::targetReleaseId must look like rel-xxxxxxxxxxxx"; exit 1; }
+          test -n "${{ github.event.inputs.reason }}" || { echo "::error::a reason is required"; exit 1; }
+          test -n "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" -a -n "${{ vars.APP_REPOSITORY }}" || { echo "::error::OPA_BUNDLE_SIGNING_PUBLIC_KEY / APP_REPOSITORY are not set"; exit 1; }
+          printf '%s\n' "${{ vars.OPA_BUNDLE_SIGNING_PUBLIC_KEY }}" > "$RUNNER_TEMP/public.pem"
+      - name: Authenticate to Artifactory (JFrog OIDC)
+        id: jfrog
+        if: vars.JFROG_OIDC_PROVIDER_NAME != ''
+        uses: jfrog/setup-jfrog-cli@6ed45ef1a24199bd4c94d3fd55a7e8cb7e45985d # v5.3.2
+        env:
+          JF_URL: ${{ vars.JFROG_PLATFORM_URL }}
+        with:
+          oidc-provider-name: ${{ vars.JFROG_OIDC_PROVIDER_NAME }}
+          oidc-audience: ${{ vars.JFROG_OIDC_AUDIENCE }}
+      - name: Select the access token
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+          FALLBACK_TOKEN: ${{ secrets.ARTIFACTORY_PROMOTE_TOKEN }}
+        run: |
+          if [ -n "$OIDC_TOKEN" ]; then echo "::add-mask::$OIDC_TOKEN"; echo "ARTIFACTORY_TOKEN=$OIDC_TOKEN" >> "$GITHUB_ENV"
+          elif [ -n "$FALLBACK_TOKEN" ]; then echo "ARTIFACTORY_TOKEN=$FALLBACK_TOKEN" >> "$GITHUB_ENV"
+          else echo "::error::no Artifactory credentials"; exit 1; fi
+      - name: Verify the target was promoted and verified here, re-verify its artifacts, record the rollback
+        run: |
+          mkdir -p dist/app-repo
+          scripts/promote.sh --rollback --release-id "${{ github.event.inputs.targetReleaseId }}" --environment "${{ github.event.inputs.environment }}" \
+            --source "${{ github.event.inputs.environment == 'dev' && 'candidates' || github.event.inputs.environment == 'staging' && 'dev' || 'staging' }}" \
+            --verification-key "$RUNNER_TEMP/public.pem" --app-repo dist/app-repo --actor "${{ github.actor }}" --reason "${{ github.event.inputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Open the rollback pull request in the application repository
+        env:
+          GH_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
+        run: |
+          scripts/app-repo-pr.sh --repo "${{ vars.APP_REPOSITORY }}" --environment "${{ github.event.inputs.environment }}" \
+            --release-id "${{ github.event.inputs.targetReleaseId }}" --file "dist/app-repo/deploy/helm/governance/releases/${{ github.event.inputs.environment }}.json" \
+            --kind rollback --reason "${{ github.event.inputs.reason }}" | tee -a "$GITHUB_STEP_SUMMARY"

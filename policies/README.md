@@ -14,10 +14,11 @@ bundles/<name>/        .manifest (root governance/<name>), *.rego, identical lib
 contracts/             input.schema.json  output.schema.json  catalog.schema.json  release-manifest.schema.json  CHANGELOG.md
 tests/*_test.rego      Rego unit tests over all six bundles (78)
 tests/fixtures/        inputs/*.json (contract 2.0, schema-validated)  expected/*.json (decision per input, minus revisions)
-tests/integration/     smoke.sh (opa run --server with signed artifacts), artifactory-standin/ (nginx), publish-local.sh, validate-negative.sh
+tests/integration/     smoke.sh (opa run --server with signed artifacts), artifactory-standin/ (nginx), publish-local.sh, promote-local.sh, validate-negative.sh
 scripts/               opa.sh install-opa.sh build.sh validate.sh changed-bundles.sh check-*.sh eval-fixtures.sh lint.sh
                        build-release.sh release-manifest.sh assemble-release.sh publish.sh
-.github/workflows/     validate.yml (Workflow A)  publish.yml (Workflow B);  .github/CODEOWNERS per bundle
+                       verify-artifacts.sh promote.sh app-repo-pr.sh verify-active.sh mark-verified.sh
+.github/workflows/     validate.yml (A)  publish.yml (B)  promote.yml (C)  verify.yml (D)  rollback.yml (E);  .github/CODEOWNERS per bundle
 OPA_VERSION opa.sha256 REGAL_VERSION .regal/config.yaml .gitleaks.toml
 build.sh test.sh       root wrappers kept for policy_kafka (PlatformContainers, upload-release.sh)
 ```
@@ -35,6 +36,7 @@ the `openpolicyagent/opa:<OPA_VERSION>` image. No other OPA version is ever used
 | Add a behaviour fixture | drop `tests/fixtures/inputs/<name>.json`, run `scripts/eval-fixtures.sh --update`, review `expected/<name>.json`, commit both |
 | Prove the gates reject broken trees | `tests/integration/validate-negative.sh` |
 | Exercise Workflow B end to end against a local Artifactory stand-in | `tests/integration/publish-local.sh` |
+| Exercise Workflows C, D (artifact half) and E against the stand-in | `tests/integration/promote-local.sh` |
 
 Rules the checks enforce: exactly six bundles with roots `governance/<name>`, no root a prefix of another, every package
 under its bundle root, no cross-bundle `import` (functions do not resolve across bundles; `core` composes by dynamic
@@ -59,6 +61,25 @@ run), upload to `<repo>/<bundle>/<revision>/`, properties `git.sha`, `contract.v
 verification by download, candidate manifest `releases/candidates/<releaseId>.json`, GitHub Release draft
 `release/<releaseId>` with the manifest and checksums attached. Nothing is promoted by this workflow.
 
+**C, `promote.yml`** (`workflow_dispatch`: `releaseId`, `environment`, `source`, `reason`; environments `promote-<env>`
+with required reviewers for staging and production). Nothing is rebuilt: `scripts/promote.sh` downloads the manifest
+from `releases/candidates/` (or the source environment), re-verifies every artifact (existence, checksum, signature,
+fixtures through `scripts/verify-artifacts.sh`), writes the immutable promotion record `releases/<env>/<releaseId>.json`
+and an event `releases/<env>/events/<ts>-promote-<releaseId>.json`, renders the application repository's release file
+and `scripts/app-repo-pr.sh` opens the pull request on `deploy/helm/governance/releases/<env>.json` (auto-merge for dev).
+Promoting the same release to the same environment twice, or a release that never reached the source, is refused.
+
+**D, `verify.yml`** (called by the application `deploy.yml`, on demand, nightly for every environment): from the
+runner, every artifact of the release exists unchanged and loads under signature verification; against the namespace,
+`scripts/verify-active.sh` checks that every governance pod reports the release through its readiness probe
+(`policyRelease` details), that each OPA sidecar has all bundles active, and that every fixture evaluated on the
+sidecar's loopback Data API (through `oc exec`) equals its expected decision. A pass records
+`releases/<env>/verified/<releaseId>.json` (`scripts/mark-verified.sh`); only such releases are rollback targets.
+
+**E, `rollback.yml`** (`workflow_dispatch`: `environment`, `targetReleaseId`, `reason`; environments `rollback-<env>`):
+`scripts/promote.sh --rollback` requires the target's promotion record and verified marker, re-verifies its
+artifacts, writes a rollback event and opens the pull request (never auto-merged). No artifact is ever changed.
+
 Inputs that live outside the repository (plan assumptions 1 and 6), all referenced by name only:
 
 | Where | Name | Meaning |
@@ -69,6 +90,10 @@ Inputs that live outside the repository (plan assumptions 1 and 6), all referenc
 | environment `artifactory-publish` secret | `OPA_BUNDLE_SIGNING_KEY` | RS256 private key (PEM); the public key is derived in the job and shipped to OPA through the Helm chart |
 | environment `artifactory-publish` secret | `ARTIFACTORY_PUBLISH_TOKEN` | fallback only: scoped, expiring token, used when no OIDC provider is configured |
 | repository secret | `GITLEAKS_LICENSE` | only for organisation accounts |
+| repository variable | `OPA_BUNDLE_SIGNING_PUBLIC_KEY` | public key (PEM) Workflows C, D and E verify signatures with |
+| repository variable | `APP_REPOSITORY` | `ORG/policy_kafka`, where Workflows C and E open release pull requests |
+| environments `promote-<env>`, `rollback-<env>` | `APP_REPO_TOKEN`, `ARTIFACTORY_PROMOTE_TOKEN` (fallback) | pull requests on the application repository; deploy-without-overwrite on `releases/**` |
+| environments `verify-<env>` | `OPENSHIFT_SERVER`, `OPENSHIFT_NAMESPACE`, `OPENSHIFT_TOKEN`, `ARTIFACTORY_VERIFY_TOKEN` (fallback), `SLACK_WEBHOOK_URL` | Workflow D cluster access (get pods, exec) and notifications |
 
 ## Release manifest
 

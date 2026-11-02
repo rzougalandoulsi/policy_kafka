@@ -39,8 +39,11 @@
 ## Policy rollout
 Two modes (ADR 0008). **Deployed environments run in `release` mode**: the policy set is pinned by
 `deploy/helm/governance/releases/<env>.json`, OPA pulls the signed revisions from Artifactory, upload/activate/rollback
-answer 409 `POLICY_SOURCE_IS_GIT`, and the console shows the release read-only. Promote with Workflow C (release PR),
-roll back with Workflow E; `helm upgrade` rolls the pods and each pod is ready only when its sidecar runs the whole set
+answer 409 `POLICY_SOURCE_IS_GIT`, and the console shows the release read-only. Promote with Workflow C (`promote.yml`: verifies the artifacts again, writes the
+immutable record `releases/<env>/<releaseId>.json` in Artifactory, opens the release PR), verify with Workflow D
+(`verify.yml`: artifacts, every pod's readiness release, sidecar health, fixtures on each sidecar; writes
+`releases/<env>/verified/<releaseId>.json`), roll back with Workflow E (`rollback.yml`: only a previously verified
+release, rollback event, release PR with the reason); `helm upgrade` rolls the pods and each pod is ready only when its sidecar runs the whole set
 (`GET /api/v1/admin/policy-releases/current` shows `mode`, `source`, expected versus loaded per bundle).
 `deploy/scripts/post-deploy-check.sh` runs the per-pod check after a deploy. A pod that never becomes ready: `oc logs
 <pod> -c opa` (download, signature or activation error), then the readiness details. **Local mode** (Compose, IT):
