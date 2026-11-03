@@ -17,3 +17,6 @@ admin-ui/src/api/schema.d.ts
 /.tours/
 /.claude/
 /.claude/plans/
+# Orchestrator and Processor stand-ins stay local; they are not published with this repository.
+/orchestrator-simulator/
+/processor-simulator/

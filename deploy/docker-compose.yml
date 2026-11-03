@@ -164,8 +164,10 @@ services:
       timeout: 3s
       retries: 10
 
-  # Stand-in for the real Orchestrator (not provided here): speaks the documented two-topic contract, in-memory state.
+  # Stand-ins for the real Orchestrator and Processor: private local modules (not in the public repository), speaking the
+  # documented two-topic contract with in-memory state. Enabled with COMPOSE_PROFILES=simulators (see .env.example).
   orchestrator-simulator:
+    profiles: ["simulators"]
     build: ../orchestrator-simulator
     depends_on:
       schema-registry: { condition: service_healthy }
@@ -177,6 +179,7 @@ services:
       SCHEMA_REGISTRY_URL: http://schema-registry:8081
 
   processor-simulator:
+    profiles: ["simulators"]
     build: ../processor-simulator
     depends_on:
       schema-registry: { condition: service_healthy }

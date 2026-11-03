@@ -19,10 +19,25 @@
 
   <modules>
     <module>contracts</module>
-    <module>orchestrator-simulator</module>
-    <module>processor-simulator</module>
     <module>governance</module>
   </modules>
+
+  <!-- The Orchestrator and Processor stand-ins are private local modules (git-ignored, not published). They join the
+       reactor only when their directories exist, so a public checkout builds Governance without them. -->
+  <profiles>
+    <profile>
+      <id>simulators</id>
+      <activation>
+        <file>
+          <exists>${basedir}/orchestrator-simulator/pom.xml</exists>
+        </file>
+      </activation>
+      <modules>
+        <module>orchestrator-simulator</module>
+        <module>processor-simulator</module>
+      </modules>
+    </profile>
+  </profiles>
 
   <properties>
     <java.version>21</java.version>

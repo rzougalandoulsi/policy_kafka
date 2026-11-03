@@ -2,8 +2,8 @@
 
 The Orchestrator is **not implemented in this repository**. Its source (the `ssengine` prototype) was analysed
 (`repository-analysis.md`) and the Governance side was built against the documented Avro contract
-(`kafka-contract.md`). `orchestrator-simulator/` is a test stand-in that behaves exactly as described below so the
-platform can be exercised end to end; it is not production code.
+(`kafka-contract.md`). A private local stand-in (`orchestrator-simulator/`, kept out of this
+repository) behaves exactly as described below so the platform can be exercised end to end; it is not production code.
 
 ## What the real Orchestrator must add
 

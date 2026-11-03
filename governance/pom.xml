@@ -154,20 +154,57 @@
       <version>1.5.8</version>
       <scope>test</scope>
     </dependency>
-    <!-- End-to-end tests run the Orchestrator and Processor stand-ins in-process. -->
-    <dependency>
-      <groupId>com.itland</groupId>
-      <artifactId>orchestrator-simulator</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.itland</groupId>
-      <artifactId>processor-simulator</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
   </dependencies>
+
+  <!-- End-to-end tests run the Orchestrator and Processor stand-ins in-process. Those modules are private and
+       git-ignored: with them present the e2e suite compiles and runs; without them (public checkout, CI) the
+       e2e sources are excluded and only the unit tests and the engine/approval ITs run. -->
+  <profiles>
+    <profile>
+      <id>simulators</id>
+      <activation>
+        <file>
+          <exists>${basedir}/../orchestrator-simulator/pom.xml</exists>
+        </file>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>com.itland</groupId>
+          <artifactId>orchestrator-simulator</artifactId>
+          <version>${project.version}</version>
+          <scope>test</scope>
+        </dependency>
+        <dependency>
+          <groupId>com.itland</groupId>
+          <artifactId>processor-simulator</artifactId>
+          <version>${project.version}</version>
+          <scope>test</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>without-simulators</id>
+      <activation>
+        <file>
+          <missing>${basedir}/../orchestrator-simulator/pom.xml</missing>
+        </file>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+              <testExcludes>
+                <testExclude>com/itland/governance/support/PlatformContainers.java</testExclude>
+                <testExclude>com/itland/governance/e2e/**</testExclude>
+              </testExcludes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
   <build>
     <plugins>

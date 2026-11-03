@@ -5,8 +5,8 @@ Three services around a Kafka backbone:
 | Service | Role | Module |
 |---|---|---|
 | **Governance** (new) | Public REST entry point: OAuth2 JWT, OPA policy evaluation (two stages), human approvals on an embedded Flowable BPMN engine, scoped exceptions, audit, Kafka handshake | `governance/` |
-| **Orchestrator** (existing, not implemented here) | Diff desired vs confirmed state, propose immutable plans, release only authorized plans, reconcile results | stand-in: `orchestrator-simulator/`; requirements: `docs/orchestrator-integration.md` |
-| **Processor** (existing, not implemented here) | Executes actions against Confluent Cloud | stand-in: `processor-simulator/` |
+| **Orchestrator** (existing, not implemented here) | Diff desired vs confirmed state, propose immutable plans, release only authorized plans, reconcile results | requirements: `docs/orchestrator-integration.md`; a private local stand-in (`orchestrator-simulator/`, not in this repository) drives the e2e suite |
+| **Processor** (existing, not implemented here) | Executes actions against Confluent Cloud | private local stand-in (`processor-simulator/`, not in this repository) |
 | **Admin UI** (new) | Browser console for team configuration, policy configuration (incl. shadow mode), Rego bundles and releases, scoped exceptions, approval rules, shadow findings and audit (OIDC login, roles from the token, API stays the enforcer) | `admin-ui/` |
 
 Supporting pieces: `contracts/` (shared Avro schemas and the OPA input/output JSON schema, contract 2.0), `policies/` (six Rego v1 bundles, tests, fixtures and the CI/publishing tooling of the future `governance-policies` repository, see `policies/README.md`), `deploy/` (Docker Compose with SASL/ACLs, OPA, mock OIDC; Helm charts for OpenShift under `deploy/helm/`), `docs/`.
@@ -60,7 +60,7 @@ page); auditors can use `deploy/scripts/token.sh` with the dev token form. See `
 
 - `docs/repository-analysis.md` — what the existing Orchestrator prototype did and the gaps found
 - `docs/kafka-contract.md` — topics, Avro envelopes, correlation, partitioning, idempotency
-- `docs/orchestrator-integration.md` — what the real Orchestrator must implement to join the handshake (the simulator mirrors it)
+- `docs/orchestrator-integration.md` — what the real Orchestrator must implement to join the handshake (the private stand-in mirrors it)
 - `docs/governance.md` — request lifecycle, decision model, policies, exceptions, approvals, dynamic policy management
 - `docs/flow-animation.html` — animated walkthrough of the handshake as a sequence diagram and as a component map (services, Postgres tables, Kafka topics, clients, and the policy release supply chain: policy repository workflows, Artifactory, release file, OPA sidecar) that traces each scenario: happy path, hard deny, scoped exception, stage 2 approval, OPA unavailable; open the file from a checkout, GitHub shows only its source
 - `docs/runbook.md` — operations, the single entry point: metrics, health, dead letters, failure modes, release-mode operations (Artifactory outage, signature failure, a promotion that never becomes ready, rollback, signing key rotation, contract major bump)
