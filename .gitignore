@@ -15,3 +15,5 @@ admin-ui/src/api/schema.d.ts
 /.claude/
 /.idea/
 /.tours/
+/.claude/
+/.claude/plans/
