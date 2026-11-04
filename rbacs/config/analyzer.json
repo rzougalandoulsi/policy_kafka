@@ -1,0 +1,26 @@
+{
+  "analysis": {
+    "readOnly": true,
+    "failOnAmbiguousScope": true
+  },
+  "rules": {
+    "RB001": true,
+    "RB002": true,
+    "RB003": true,
+    "RB004": true,
+    "RB005": true
+  },
+  "consolidation": {
+    "minimumBindingsToMerge": 3,
+    "minimumPrefixesToMerge": 2,
+    "minimumPrefixLength": 3,
+    "requireAuthorizedPrefix": true,
+    "allowAccessExpansion": false,
+    "includeReviewCandidates": true
+  },
+  "authorizedPrefixes": {
+    "team-a": ["team-a.", "team-a.internal."],
+    "team-b": ["team-b."]
+  },
+  "verifiedPatternSemantics": ["Topic", "Group", "TransactionalId"]
+}

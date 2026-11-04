@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/rbac-analyzer/rbac-inventory.schema.json",
+  "title": "Confluent Cloud RBAC inventory export",
+  "description": "Canonical input contract for rbac-analyzer. Documentation only: the analyzer validates with its own standard-library code and does not load this file.",
+  "type": "object",
+  "required": ["metadata", "bindings"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["organizationId"],
+      "properties": {
+        "exportedAt": {"type": "string", "format": "date-time", "description": "UTC timestamp of the export, e.g. 2026-11-04T12:00:00Z. Missing value produces a warning."},
+        "organizationId": {"type": "string", "minLength": 1},
+        "completeInventory": {"type": "boolean", "description": "true when every role binding of the organization is present. Missing value is treated as false with a warning."},
+        "bindingIdsAreConfluentBindingIds": {"type": "boolean", "default": false, "description": "true when each row id is the id of one distinct Confluent role-binding object. Only then are exact duplicates classified SAFE."}
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/binding"}
+    }
+  },
+  "$defs": {
+    "binding": {
+      "type": "object",
+      "required": ["principal", "role", "scope"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "Unique per record. Missing ids are synthesized as row-<index>; duplicated ids make every affected record INVALID."},
+        "principal": {"type": "string", "minLength": 1, "examples": ["User:sa-123", "User:u-456", "Group:engineering"]},
+        "role": {"type": "string", "minLength": 1, "examples": ["DeveloperRead", "DeveloperWrite", "EnvironmentAdmin"]},
+        "scope": {"$ref": "#/$defs/scope"},
+        "resource": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/resource"}],
+          "description": "Absent or null for bindings without a resource (for example OrganizationAdmin)."
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": ["type", "organizationId"],
+      "properties": {
+        "type": {"type": "string", "description": "ORGANIZATION, ENVIRONMENT or KAFKA_CLUSTER are analyzed; other values are preserved and reported as UNSUPPORTED."},
+        "organizationId": {"type": "string", "minLength": 1},
+        "environmentId": {"type": "string", "description": "Required for ENVIRONMENT and KAFKA_CLUSTER; must be absent for ORGANIZATION."},
+        "clusterId": {"type": "string", "description": "Required for KAFKA_CLUSTER; must be absent for ORGANIZATION and ENVIRONMENT."},
+        "crn": {"type": "string", "description": "Optional. Kept as evidence; one structured scope must not appear with two different CRNs."}
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["type", "name", "patternType"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1, "description": "Topic, Group, TransactionalId or any other Confluent resource type (opaque)."},
+        "name": {"type": "string", "description": "Must be non-empty for LITERAL. An empty PREFIXED name is UNSUPPORTED."},
+        "patternType": {"type": "string", "description": "LITERAL or PREFIXED are analyzed; other values are UNSUPPORTED."}
+      }
+    }
+  }
+}

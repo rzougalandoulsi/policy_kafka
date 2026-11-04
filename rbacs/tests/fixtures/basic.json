@@ -1,0 +1,145 @@
+{
+  "metadata": {
+    "exportedAt": "2026-11-04T12:00:00Z",
+    "organizationId": "org-123",
+    "completeInventory": true
+  },
+  "bindings": [
+    {
+      "id": "rbac-001",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-002",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-003",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-ab.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-004",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders.",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-005",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-c.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-006",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-c.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-007",
+      "principal": "User:sa-456",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-008",
+      "principal": "User:sa-123",
+      "role": "DeveloperWrite",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders",
+        "patternType": "LITERAL"
+      }
+    }
+  ]
+}

@@ -1,0 +1,454 @@
+{
+  "metadata": {
+    "exportedAt": "2026-11-04T12:00:00Z",
+    "organizationId": "org-123",
+    "completeInventory": true
+  },
+  "bindings": [
+    {
+      "id": "rbac-001",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-002",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-003",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-ab.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-004",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders.",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-005",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders.v2",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-006",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-c.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-007",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-c.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-008",
+      "principal": "User:sa-123",
+      "role": "DeveloperWrite",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-009",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-456",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-456"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-010",
+      "principal": "User:sa-456",
+      "role": "DeveloperWrite",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-b.orders",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-011",
+      "principal": "User:sa-456",
+      "role": "DeveloperWrite",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-b.payments",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-012",
+      "principal": "User:sa-456",
+      "role": "DeveloperWrite",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-b.inventory",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-013",
+      "principal": "User:sa-456",
+      "role": "DeveloperWrite",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-b.customers",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-014",
+      "principal": "User:sa-456",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Group",
+        "name": "team-b.consumer-1",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-015",
+      "principal": "User:sa-456",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Group",
+        "name": "team-b.consumer-2",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-016",
+      "principal": "User:sa-999",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-b.audit",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-020",
+      "principal": "User:sa-789",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.events.",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-021",
+      "principal": "User:sa-789",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.metrics.",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-022",
+      "principal": "User:sa-789",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "TransactionalId",
+        "name": "team-a.",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-023",
+      "principal": "User:sa-789",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "TransactionalId",
+        "name": "team-a.tx-1",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-030",
+      "principal": "User:u-100",
+      "role": "EnvironmentAdmin",
+      "scope": {
+        "type": "ENVIRONMENT",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123"
+      }
+    },
+    {
+      "id": "rbac-031",
+      "principal": "User:u-101",
+      "role": "OrganizationAdmin",
+      "scope": {
+        "type": "ORGANIZATION",
+        "organizationId": "org-123",
+        "crn": "crn://confluent.cloud/organization=org-123"
+      }
+    },
+    {
+      "id": "rbac-032",
+      "principal": "User:u-100",
+      "role": "CloudClusterAdmin",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Cluster",
+        "name": "lkc-123",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-040",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Subject",
+        "name": "team-a.",
+        "patternType": "PREFIXED"
+      }
+    },
+    {
+      "id": "rbac-041",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Subject",
+        "name": "team-a.orders-value",
+        "patternType": "LITERAL"
+      }
+    },
+    {
+      "id": "rbac-050",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "KAFKA_CLUSTER",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "clusterId": "lkc-123",
+        "crn": "crn://confluent.cloud/organization=org-123/environment=env-123/cloud-cluster=lkc-123"
+      },
+      "resource": {
+        "type": "Topic",
+        "name": "team-a.*",
+        "patternType": "MATCH"
+      }
+    },
+    {
+      "id": "rbac-051",
+      "principal": "User:sa-123",
+      "role": "DeveloperRead",
+      "scope": {
+        "type": "SCHEMA_REGISTRY",
+        "organizationId": "org-123",
+        "environmentId": "env-123",
+        "schemaRegistryId": "lsrc-1"
+      },
+      "resource": {
+        "type": "Subject",
+        "name": "orders-value",
+        "patternType": "LITERAL"
+      }
+    }
+  ]
+}
