@@ -1,0 +1,8 @@
+{
+  "rules": [
+    {"id":"TOPIC_NAME", "collection":"topics", "field":"topic_name", "operator":"regex", "value":"^[a-z0-9]+(\\.[a-z0-9]+)+$"},
+    {"id":"TOPIC_PARTITIONS", "collection":"topics", "field":"partition_count", "operator":"max", "value":12},
+    {"id":"POOL_NAME", "collection":"pools", "field":"pool_name", "operator":"regex", "value":"^[a-zA-Z0-9-]+$"},
+    {"id":"SERVICE_ACCOUNT_NAME", "collection":"services_accounts", "field":"display_name", "operator":"regex", "value":"^[a-zA-Z0-9-]+$"}
+  ]
+}
